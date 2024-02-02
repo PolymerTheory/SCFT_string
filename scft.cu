@@ -771,7 +771,7 @@ int main (int argc, char *argv[])
     } else {
         finc = "input.dat";
     }
-    printf("reading input from %s\n",finc);
+    printf("Reading input from %s\n",finc.c_str());
     
     auto params = readParameters(finc); //read in parameters
     setParameters(params, chi, f, Vc, N, flag, m, D, fix); //set parameter values
