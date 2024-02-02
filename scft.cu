@@ -67,6 +67,9 @@ double* cube_a;
 //subroutines for the propagators etc. uses cuda. includes other .h files for cuda stuff
 #include "density.h"
 
+double FreeE (double **W, const double chi, const double f, density *D2, double *alf, int *doiis, int *ndo, int *whois, int procid, double *FEs0, double *FEs1, double *FEs, double *phctot, int numprocs, int printfe=0, int doii=-1, const int maxIter=1E1, const double errTol=1e-3);
+//double FreeE (double **W, const double chi, const double f, density *D2, double *alf, int *doiis, int *ndo, int *whois, int procid, double *FEs0, double *FEs1, double *FEs, double *phctot, int numprocs, int printfe, int doii, const int maxIter, const double errTol);
+
 //structure to read in inputs
 std::unordered_map<std::string, std::vector<double>> readParameters0(const std::string& filename) {
     std::unordered_map<std::string, std::vector<double>> params;
@@ -459,8 +462,7 @@ int solve_field0 (double **W, const double chi, const double f, density *D2, int
 //==============================================================
 // Solves field equations for W_+ and W_-
 //--------------------------------------------------------------
-int solve_field (double **W, const double chi, const double f, density *D2, double *alf, int *doiis, int *ndo, int *whois, int procid, int numprocs, int doii=-1,
-                 const int maxIter=1E1, const double errTol=1e-3)
+int solve_field (double **W, const double chi, const double f, density *D2, double *alf, int *doiis, int *ndo, int *whois, int procid, int numprocs, int doii=-1, const int maxIter=1E1, const double errTol=1e-3)
 {
     
     double lambda=0.05;
@@ -476,6 +478,7 @@ int solve_field (double **W, const double chi, const double f, density *D2, doub
     double Del[strn-1],Delsum;
     double x[strn],yyp[2],dotWs[strn], dotW,xref[strn],dotWs2[strn];
     int ii, steps[strn];
+    double FEs0[strn],FEs1[strn],FEs[strn],phctot[strn], FE;
     
     for(ii=0;ii<strn;ii++) steps[ii]=0;
     
@@ -669,15 +672,15 @@ int solve_field (double **W, const double chi, const double f, density *D2, doub
                     printf("error[%d]  %5d/%d %.4lE/%.1lE %.2lg.\tE: %.2lE ... %d (Time: %s)\n",doii,k,maxIter,err3,errTol,lambda, errs[doii],steps[ii],tms);
                 }
                 assert(err==err); //kill code if error is nan
-                
                 out=fopen("check","w"); //output errors to a file to check stuff
-                fprintf(out,"%d %lf %lf\n",k,err3,lambda);
+                fprintf(out,"%d %lf %lf %lf\n",k,err3,lambda,FE);
                 for(ii=0;ii<strn;ii++) fprintf(out,"%d %.12lf %.12lf\n",ii,errs[ii],errs3[ii]);
                 fprintf(out,"\n");
                 fclose(out);
             }
         //regularly output fields and A monomer concentration
         if(k%(skip)==0 || k==maxIter-1 || k==-1 || !(err>errTol) || sigg==7){
+            FE= FreeE(W, chi,  f, D2, alf, doiis, ndo, whois, procid, FEs0, FEs1, FEs, phctot, numprocs, 1);
             for(ii=0;ii<strn;ii++){
                 if(((doiis[ii]==1 && doii==-1) || doii==ii) && err==err){
                     outfl = "rhoA_" + std::to_string(ii) + ".vtk";
@@ -709,7 +712,45 @@ int solve_field (double **W, const double chi, const double f, density *D2, doub
     return k;
 }
 
-
+//calculates free energy
+double FreeE (double **W, const double chi, const double f, density *D2, double *alf, int *doiis, int *ndo, int *whois, int procid, double *FEs0, double *FEs1, double *FEs, double *phctot, int numprocs, int printfe, int doii, const int maxIter, const double errTol){
+    //calculate free energies
+    double wa,wb,FE=0, lnQ;
+    for(int ii=0;ii<strn;ii++){
+        if(doiis[ii]==1 || (fix[0]==1 && ii==0) || (fix[1]==1 && ii==(strn-1)) ) { //other 2 conditions to make sure to get ii=0 and 1
+            solve_field0(W, chi, f, D2, ii, 1E2, 1E-4); //solve W_+
+            D2->props(W[ii], &lnQ, ii, NA+NB, alpha, phidb, phis, f);
+            FEs0[ii] = -lnQ;
+            FEs1[ii]=0;
+            phctot[ii]=0;
+            for(int r=0;r<M;r++) {
+                wa=W[ii][r]+W[ii][r+M]; wb=W[ii][r+M]-W[ii][r];//can be calculated using W_- and W_+ directly. doesn't make a difference. I chose htis way because it's simpler to adapt to more species
+                FEs1[ii] += (chi*phiA[ii][r]*phiB[ii][r]-wa*phiA[ii][r]-wb*phiB[ii][r])/M;
+                //FEs1[ii] += (W[ii][r]*W[ii][r]/chi - W[ii][r+M])/M; You cna use this instead... just changes FE by a constant
+                phctot[ii]+=phiA[ii][r]/(M*f);
+            }
+            FEs[ii] = FEs0[ii] + FEs1[ii];
+        }
+    }
+    for(int ii=0;ii<strn;ii++){
+        MPI_Bcast(&FEs[ii], 1, MPI_DOUBLE, whois[ii], MPI_COMM_WORLD);
+        MPI_Bcast(&FEs0[ii], 1, MPI_DOUBLE, whois[ii], MPI_COMM_WORLD);
+        MPI_Bcast(&FEs1[ii], 1, MPI_DOUBLE, whois[ii], MPI_COMM_WORLD);
+    }
+    for(int ii=0;ii<strn;ii++) FE+=FEs[ii];
+    MPI_Barrier(MPI_COMM_WORLD);
+    
+    if(printfe==1 && procid==0){
+        std::string outfl;
+        outfl = "FEs";
+        out = fopen(outfl.c_str(),"w");
+        //for(ii=0;ii<strn;ii++) fprintf(out,"%lf\t%.10lf\t%.10lf\t%.10lf\t%.10lf\n",alf[ii],FEs[ii],FEs0[ii],FEs1[ii],phctot[ii]); //if you want the breakdown of free energies.
+        for(int ii=0;ii<strn;ii++) fprintf(out,"%lf\t%.10lf\t%.10lf\n",alf[ii],FEs[ii],phctot[ii]);
+        fclose(out);
+    }
+    
+    return FE;
+}
 
 
 /**/
@@ -727,7 +768,7 @@ int solve_field (double **W, const double chi, const double f, density *D2, doub
 //--------------------------------------------------------------
 int main (int argc, char *argv[])
 {
-    double chi, f, lnQ;
+    double chi, f;//, lnQ;
     int    x, y, z, r, N, flag,ii=0;
     time0 = time(NULL); //code start time
     
@@ -779,12 +820,14 @@ int main (int argc, char *argv[])
     double V = D[2]*D[1]*D[0];
     phidb = Vc; //GC
     
-    printf("Input parameters:\n");
-    printf("%lf %lf %lf (%lf)\n",chi,f,Vc,phidb);
-    printf("%d %d %d %d\n",N,m[0],m[1],m[2]);
-    printf("%lf %lf %lf\n",D[0],D[1],D[2]);
-    printf("%d %d\n",fix[0],fix[1]);
-    printf("%d\n",flag);
+    if(procid==0){
+        printf("Input parameters:\n");
+        printf("%lf %lf %lg\n",chi,f,Vc);
+        printf("%d %d %d %d\n",N,m[0],m[1],m[2]);
+        printf("%lf %lf %lf\n",D[0],D[1],D[2]);
+        printf("%d %d\n",fix[0],fix[1]);
+        printf("%d\n",flag);
+    }
     
     
     //Decide which processors do what
@@ -932,21 +975,22 @@ int main (int argc, char *argv[])
         MPI_Bcast(W[ii], M*2, MPI_DOUBLE, whois[ii], MPI_COMM_WORLD);
     MPI_Barrier(MPI_COMM_WORLD);
     
-    printf("Fields solved.\n");
+    tistr();
+    printf("Fields solved (%d) (Time: %s)\n",procid,tms);
     
+    /*
     //calculate free energies
-    double FEs0[strn],FEs1[strn],FEs1a[strn],FEs[strn],wa,wb,phctot[strn], FE=0;
+    double FEs0[strn],FEs1[strn],FEs[strn],wa,wb,phctot[strn], FE=0;
     for(ii=0;ii<strn;ii++){
         if(doiis[ii]==1) solve_field0(W, chi, f, D2, ii, 1E2, 1E-4); //solve W_+
         D2->props(W[ii], &lnQ, ii, NA+NB, alpha, phidb, phis, f);
         FEs0[ii] = -lnQ;
         FEs1[ii]=0;
-        FEs1a[ii]=0;
         phctot[ii]=0;
         for(int r=0;r<M;r++) {
-            wa=W[ii][r]+W[ii][r+M]; wb=W[ii][r+M]-W[ii][r];//can be calculated using W_- and W_+ directly. doesn't make a difference. I forgot why I did it like this
+            wa=W[ii][r]+W[ii][r+M]; wb=W[ii][r+M]-W[ii][r];//can be calculated using W_- and W_+ directly. doesn't make a difference. I chose htis way because it's simpler to adapt to more species
             FEs1[ii] += (chi*phiA[ii][r]*phiB[ii][r]-wa*phiA[ii][r]-wb*phiB[ii][r])/M;
-            FEs1a[ii] += (W[ii][r]*W[ii][r]/chi - W[ii][r+M])/M;
+            //FEs1[ii] += (W[ii][r]*W[ii][r]/chi - W[ii][r+M])/M; You cna use this instead... just changes FE by a constant
             phctot[ii]+=phiA[ii][r]/(M*f);
         }
         FEs[ii] = FEs0[ii] + FEs1[ii];
@@ -956,22 +1000,18 @@ int main (int argc, char *argv[])
         MPI_Bcast(&FEs[ii], 1, MPI_DOUBLE, whois[ii], MPI_COMM_WORLD);
         MPI_Bcast(&FEs0[ii], 1, MPI_DOUBLE, whois[ii], MPI_COMM_WORLD);
         MPI_Bcast(&FEs1[ii], 1, MPI_DOUBLE, whois[ii], MPI_COMM_WORLD);
-        MPI_Bcast(&FEs1a[ii], 1, MPI_DOUBLE, whois[ii], MPI_COMM_WORLD);
     }
     MPI_Barrier(MPI_COMM_WORLD);
-    
-    printf("FE caculated\n");
+    */
+    //calculate and print free energy
+    double FEs0[strn],FEs1[strn],FEs[strn],phctot[strn], FE;
+    FE= FreeE(W, chi,  f, D2, alf, doiis, ndo, whois, procid, FEs0, FEs1, FEs, phctot, numprocs, 1);
+     
+    tistr();
+    printf("FE caculated (%d) (Time: %s)\n",procid,tms);
     
     
     if(FE==FE && procid==0){ //only output field if stuff isn't nan
-        outfl = "FEs";
-        out = fopen(outfl.c_str(),"w");
-        //for(ii=0;ii<strn;ii++) fprintf(out,"%lf\t%.10lf\t%.10lf\t%.10lf\t%.10lf\n",alf[ii],FEs[ii],FEs0[ii],FEs1[ii],phctot[ii]); //if you want the breakdown of free energies.
-        for(ii=0;ii<strn;ii++) fprintf(out,"%lf\t%.10lf\t%.10lf\t%.10lf\t%.10lf\t%.10lf\n",alf[ii],FEs[ii],FEs0[ii],FEs1[ii],FEs1a[ii],phctot[ii]);
-        //for(ii=0;ii<strn;ii++) fprintf(out,"%lf\t%.10lf\t%.10lf\n",alf[ii],FEs[ii],phctot[ii]);
-        fclose(out);
-        ii=0;
-        
         //output fields
         for(ii=0;ii<strn;ii++){
             outfl = "win" + std::to_string(ii);
