@@ -9,14 +9,6 @@ srun --ntasks=4 --gres=gpu:4 ./scft_gpu input.dat
 
 The argument ("input.dat" above) is optional but gives the name of the file from which input parameters are taken.
 
-Input parameters:
-Input parameters are arranged as follows (see input.dat for an example):
-chiN f Vc
-N m[0] m[1] m[2]
-D[0] D[1] D[2]
-fix1 fix2
-flag
-
 Explanation of parameters:
 chiN: Flory-Huggisn parameter
 f: fractional composition of copolymer, NA/(NA+NB) (NA is the 'tail' length for lipids)
