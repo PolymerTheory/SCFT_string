@@ -4,7 +4,6 @@
 #include <cuda.h>
 #include <cuda_runtime_api.h>
 #include <cufft.h>
-#include "GPU_error.h"
 #include "GPU_kernels.h"
 
 #define imin(a,b) (a<b?a:b)
@@ -133,7 +132,6 @@ public:
         
         
         // (1) FIRST HALF STEP //
-        // Mult<<<(M + threadsPerBlock - 1)/threadsPerBlock, threadsPerBlock>>>(dev_qs0, dev_in, dev_expWds2, M);
         // q
         if (s < n1) {
             Mult << <(M + threadsPerBlock - 1) / threadsPerBlock, threadsPerBlock >> >(dev_qs0, dev_in, dev_expWds2_p1, M);
@@ -363,22 +361,18 @@ public:
         Q2 /= M;
         QC /= M;
         
-        //CAN:
-        //use this to run in the canonical ensemble. phic then represents the volume fracrtion of copolymers
-        /*
-        *lnQ = phic*log(QC) + ((1.0-phic)/alpha)*log(Q2); //CAN
-        zA=0;
-        zB = (1.0-phic)/(Q2*alpha);
-        zC = phic/QC;
-         */
-        
-        //GC:
-        //use this to run in the semi-grand canonical ensemble. Here phic represents the fugacity (e^mu) of the copolymers
-        zA=0;
-        zB = 1.0;
-        zC = phic;
-        *lnQ = zA*Q1 + zB*Q2 + zC*QC;//GC //zs?
-        
+        //atatistical ensemble
+        if(ens==1){//CAN //use this to run in the canonical ensemble. phic then represents the volume fracrtion of copolymers
+            *lnQ = phic*log(QC) + ((1.0-phic)/alpha)*log(Q2); //CAN
+            zA=0;
+            zB = (1.0-phic)/(Q2*alpha);
+            zC = phic/QC;
+        } else if(ens==2){//GC //use this to run in the semi-grand canonical ensemble. Here phic represents the fugacity (e^mu) of the copolymers
+            zA=0;
+            zB = 1.0;
+            zC = phic;
+            *lnQ = zA*Q1 + zB*Q2 + zC*QC;//GC //zs?
+        }
         
         //end concentrations
         rA_rB_init_Ns_homo << <(M + threadsPerBlock - 1) / threadsPerBlock, threadsPerBlock >> > (dev_rhA, dev_rhB, dev_rCA, dev_rCB,  dev_q1[Nh], dev_q2[Nh], dev_q1[Ns], dev_q2[Ns], dev_q1[n1], dev_q2[n2], M);

@@ -4,12 +4,52 @@
 #include <cuda_runtime.h>
 #include <cufft.h>
 #include <math.h>
-#include "GPU_error.h"
+#include <cuda.h>
  
+#pragma once
+#define HANDLE_ERROR( err ) (HandleError( err, __FILE__, __LINE__ ))
+
+
 //the function of most (if not all) of these kernels can be obrained from their usage (if it's not clear from their name). Thus, see density.h.
 
-// WARNING: threadsPerBlock MUST = 2^n, WHERE n IS AN INTEGER (DUE TO REDUCTION KERNELS) //
-int const threadsPerBlock = 1024;
+int const threadsPerBlock = 1024;// WARNING: threadsPerBlock MUST = 2^n, WHERE n IS AN INTEGER (DUE TO REDUCTION KERNELS)
+
+void HandleError(cudaError_t err, char const * const file, int const line)
+{
+    if (err != cudaSuccess) {
+        fprintf(stderr, "%s in %s at line %d\n", cudaGetErrorString(err), file, line);
+        exit(EXIT_FAILURE);
+    }
+}
+
+void HandleError(cufftResult err, char const * const file, int const line)
+{
+    if (err != CUFFT_SUCCESS) {
+        switch(err) {
+            case CUFFT_INVALID_PLAN:
+                printf ("cufft %s in %s at line %d\n", "CUFFT_INVALID_PLAN", file, line);
+                break;
+            case CUFFT_INVALID_VALUE:
+                printf ("cufft %s in %s at line %d\n", "CUFFT_INVALID_VALUE", file, line);
+                break;
+            case CUFFT_INTERNAL_ERROR:
+                printf ("cufft %s in %s at line %d\n", "CUFFT_INTERNAL_ERROR", file, line);
+                break;
+            case CUFFT_EXEC_FAILED:
+                printf ("cufft %s in %s at line %d\n", "CUFFT_EXEC_FAILED", file, line);
+                break;
+            case CUFFT_SETUP_FAILED:
+                printf ("cufft %s in %s at line %d\n", "CUFFT_EXEC_FAILEDCUFFT_SETUP_FAILED", file, line);
+                break;
+            default:
+                printf ("cufft %s in %s at line %d\n", "CUFFT_EXEC_FAILEDCUFFT_SETUP_FAILED", file, line);
+        }
+        exit(EXIT_FAILURE);
+    }
+}
+
+/// ^stuff to handle errors^
+
 
 //print hello (check if things are working with gpu)
 __global__ void print_from_gpu(void) {
@@ -202,7 +242,7 @@ __global__ void cubefit_g(double *x, double *dev_cubes, double *dev_cubesT, cons
     double* d=dev_cubes + (2*strn + strn*4*tid);
     double* a=dev_cubes + (3*strn + strn*4*tid);
 
-    //this is a pretty crap way to do it
+    //this is probably nnot the best way to do it
     //these temporary arrays are never used outside of this kernel so it's slower and less memory-efficient that necessary
     //but my attempts to make it more efficient broke it and I gave up. If you fix it please let me know.
     double* h=dev_cubesT + (0*strn + strn*5*tid);

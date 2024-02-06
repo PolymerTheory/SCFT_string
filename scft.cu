@@ -32,11 +32,9 @@
 
 using namespace std;
 
-//const int strn=48; // # of steps on string. //should probably be in input file but it doesn't change that often
-//#define strn 48
-constexpr int strn = 48;
+constexpr int strn = 48; // number of steps on string. //should probably be in input file but it doesn't change that often and that makes it annoying to use in kernels the way I do
 
-int m[3], M, Mk, NA, NB;
+int m[3], M, Mk, NA, NB, ens=2;
 double dsA, dsB, pi=4*atan(1.0), phidb, D[3], *F,alpha=0.1,phis[6];
 double ***DEV, ***DDEV, ***WIN;
 double *expKA, *expKB, *expKA2, *expKB2;
@@ -68,32 +66,10 @@ double* cube_a;
 #include "density.h"
 
 double FreeE (double **W, const double chi, const double f, density *D2, double *alf, int *doiis, int *ndo, int *whois, int procid, double *FEs0, double *FEs1, double *FEs, double *phctot, int numprocs, int printfe=0, int doii=-1, const int maxIter=1E1, const double errTol=1e-3);
-//double FreeE (double **W, const double chi, const double f, density *D2, double *alf, int *doiis, int *ndo, int *whois, int procid, double *FEs0, double *FEs1, double *FEs, double *phctot, int numprocs, int printfe, int doii, const int maxIter, const double errTol);
 
-//structure to read in inputs
-std::unordered_map<std::string, std::vector<double>> readParameters0(const std::string& filename) {
-    std::unordered_map<std::string, std::vector<double>> params;
-    std::ifstream file(filename);
-    std::string line;
-    while (std::getline(file, line)) {
-        std::istringstream iss(line);
-        std::string key;
-        if (std::getline(iss, key, '=')) {
-            // Remove potential whitespace from the key
-            key.erase(std::remove_if(key.begin(), key.end(), ::isspace), key.end());
-            std::vector<double> values;
-            double value;
-            while (iss >> value) {
-                values.push_back(value);
-            }
-            params[key] = values;
-        }
-    }
-    
-    
-    return params;
-}
-
+//==============================================================
+//get parameter vlaues
+//==============================================================
 std::unordered_map<std::string, std::vector<double>> readParameters(const std::string& filename) {
     std::unordered_map<std::string, std::vector<double>> params;
     std::ifstream file(filename);
@@ -131,14 +107,18 @@ std::unordered_map<std::string, std::vector<double>> readParameters(const std::s
 }
 
 
-
+//==============================================================
 // set values of parameters
-void setParameters(const std::unordered_map<std::string, std::vector<double>>& params, double& chi, double& f, double& Vc, int& N, int& flag, int m[], double D[], int fix[]) {
+//==============================================================
+void setParameters(const std::unordered_map<std::string, std::vector<double>>& params, double& chi, double& f, double& phidb, int& N, int& flag, int& justFE, int& dostring, int& ens, int m[], double D[], int fix[]) {
     if (params.find("chi") != params.end()) chi = params.at("chi").front();
     if (params.find("f") != params.end()) f = params.at("f").front();
-    if (params.find("Vc") != params.end()) Vc = params.at("Vc").front();
+    if (params.find("phidb") != params.end()) phidb = params.at("phidb").front();
     if (params.find("N") != params.end()) N = static_cast<int>(params.at("N").front());
     if (params.find("flag") != params.end()) flag = static_cast<int>(params.at("flag").front());
+    if (params.find("ens") != params.end()) flag = static_cast<int>(params.at("ens").front());
+    if (params.find("justFE") != params.end()) flag = static_cast<int>(params.at("justFE").front());
+    if (params.find("dostring") != params.end()) flag = static_cast<int>(params.at("dostring").front());
     if (params.find("m") != params.end()) {
         const auto& values = params.at("m");
         for (size_t i = 0; i < values.size() && i < 3; ++i) {
@@ -163,7 +143,6 @@ void setParameters(const std::unordered_map<std::string, std::vector<double>>& p
 // counts the number of lines in a file
 // (useful for inputs to make sure field files have the right system size)
 //--------------------------------------------------------------
-//int lines(char * fname){
 int lines(const std::string& fname){
     int lines=0;
     FILE *fp;
@@ -462,7 +441,7 @@ int solve_field0 (double **W, const double chi, const double f, density *D2, int
 //==============================================================
 // Solves field equations for W_+ and W_-
 //--------------------------------------------------------------
-int solve_field (double **W, const double chi, const double f, density *D2, double *alf, int *doiis, int *ndo, int *whois, int procid, int numprocs, int doii=-1, const int maxIter=1E1, const double errTol=1e-3)
+int solve_field (double **W, const double chi, const double f, density *D2, double *alf, int *doiis, int *ndo, int *whois, int procid, int numprocs, int dostring, int doii=-1, const int maxIter=1E1, const double errTol=1e-3)
 {
     
     double lambda=0.05;
@@ -486,7 +465,7 @@ int solve_field (double **W, const double chi, const double f, density *D2, doub
     //'redist' redistributes points using a cubic spline
     //'perp' updartes the string only perpendicular to its trajectory.
     int dospring=1,doredist=0,doperp=0;
-    if(doii>-1) dospring=0,doredist=0,doperp=0; //do not do these if doing just one replica
+    if(doii>-1 || dostring!=1) dospring=0,doredist=0,doperp=0; //do not do these if doing just one replica
     
     //useful to turn on/off in order to update or not update first/last point
     // this is useful when studying the trajectory between unstable configurations
@@ -496,7 +475,7 @@ int solve_field (double **W, const double chi, const double f, density *D2, doub
     printf("Solving fields with %d springsteps. (procid=%d)\n",springsteps,procid);
     
     for (k=0; k<maxIter && err>errTol; k++) {
-        if(k>=springsteps && doii==-1) {dospring=0; doredist=1; doperp=1;}
+        if(k>=springsteps && doii==-1 && dostring==1) {dospring=0; doredist=1; doperp=1;}
         
         for(ii=0;ii<strn;ii++) for (r=0; r<2*M; r++) DEV[ii][0][r]=0;
         for(ii=0;ii<strn;ii++){
@@ -581,7 +560,7 @@ int solve_field (double **W, const double chi, const double f, density *D2, doub
                     for(r=0; r<2*M; r++) errs3[ii]+= DEV[ii][0][r]*DEV[ii][0][r];
                     errs3[ii] = pow(errs3[ii]/(2*M),0.5);
                 } else if(doiis[ii]==1){
-                    printf("fuck (%d)... %d %d %lf %lf\n",procid,k,ii,normDER[ii],normDEV[ii]);
+                    printf("Fatal error occurred (%d)... %d %d %lf %lf\n",procid,k,ii,normDER[ii],normDEV[ii]);
                 }
             }
             for(ii=0;ii<strn;ii++){
@@ -662,7 +641,7 @@ int solve_field (double **W, const double chi, const double f, density *D2, doub
         //updated
         
         if(procid==0) //periodic output from proc 0
-            if(k%skip==0 || k==maxIter-1 || k==-1 || !(err>errTol) || sigg==7) {
+            if(k%skip==0 || k==maxIter-1 || !(err>errTol) || sigg==7) {
                 tistr();
                 if(doii==-1){
                     double errtot=0; for(ii=0;ii<strn;ii++) errtot+=errs3[ii]*errs3[ii]/strn;
@@ -679,7 +658,7 @@ int solve_field (double **W, const double chi, const double f, density *D2, doub
                 fclose(out);
             }
         //regularly output fields and A monomer concentration
-        if(k%(skip)==0 || k==maxIter-1 || k==-1 || !(err>errTol) || sigg==7){
+        if(k%(skip)==0 || k==maxIter-1 || !(err>errTol) || sigg==7){
             FE= FreeE(W, chi,  f, D2, alf, doiis, ndo, whois, procid, FEs0, FEs1, FEs, phctot, numprocs, 1);
             for(ii=0;ii<strn;ii++){
                 if(((doiis[ii]==1 && doii==-1) || doii==ii) && err==err){
@@ -717,7 +696,7 @@ double FreeE (double **W, const double chi, const double f, density *D2, double 
     //calculate free energies
     double wa,wb,FE=0, lnQ;
     for(int ii=0;ii<strn;ii++){
-        if(doiis[ii]==1 || (fix[0]==1 && ii==0) || (fix[1]==1 && ii==(strn-1)) ) { //other 2 conditions to make sure to get ii=0 and 1
+        if(doiis[ii]==1 || (procid==0 && ii==0) || (procid==(numprocs-1) && ii==(strn-1)) ) { //other 2 conditions to make sure to get ii=0 and 1 if fix==1
             solve_field0(W, chi, f, D2, ii, 1E2, 1E-4); //solve W_+
             D2->props(W[ii], &lnQ, ii, NA+NB, alpha, phidb, phis, f);
             FEs0[ii] = -lnQ;
@@ -768,8 +747,8 @@ double FreeE (double **W, const double chi, const double f, density *D2, double 
 //--------------------------------------------------------------
 int main (int argc, char *argv[])
 {
-    double chi, f;//, lnQ;
-    int    x, y, z, r, N, flag,ii=0;
+    double chi=30, f=0.8;//paraeters with default values
+    int    x, y, z, r, N=60, flag=1,ii=0,justFE=0,dostring=1;
     time0 = time(NULL); //code start time
     
     int seed = (12345+time(NULL));
@@ -803,7 +782,6 @@ int main (int argc, char *argv[])
     
     std::string outfl;
     std::string winf;
-    double Vc;
     
     std::string finc;
     
@@ -815,19 +793,35 @@ int main (int argc, char *argv[])
     printf("Reading input from %s\n",finc.c_str());
     
     auto params = readParameters(finc); //read in parameters
-    setParameters(params, chi, f, Vc, N, flag, m, D, fix); //set parameter values
+    setParameters(params, chi, f, phidb, N, flag, justFE, dostring, ens, m, D, fix); //set parameter values
 
     double V = D[2]*D[1]*D[0];
-    phidb = Vc; //GC
     
     if(procid==0){
+        
+        if(justFE==1)
+            printf("WARNING: flag justFE=%d so W_- will not be converged. Only do this if you are happy with the field/string.\n",justFE);
+        if(dostring==1)
+            printf("Running WITH string (i.e. coupling replicas using the string method)\n");
+        else
+            printf("Running WITHOUT string (i.e. NOT coupling replicas using the string method)\n");
+        if(ens==1){
+            printf("Using the canonical ensemble\n");
+            printf("WARNING: when changing ensembles I usually change the code. I'm playing with making this a flag so it is easily changed, but I have not thourally tested the canonical ensemble implementation in this version.\n");
+        } else if(ens==2){
+            printf("Using the grand canonical ensemble\n");
+        }
+        
         printf("Input parameters:\n");
-        printf("%lf %lf %lg\n",chi,f,Vc);
+        printf("%lf %lf %lg\n",chi,f,phidb);
         printf("%d %d %d %d\n",N,m[0],m[1],m[2]);
         printf("%lf %lf %lf\n",D[0],D[1],D[2]);
         printf("%d %d\n",fix[0],fix[1]);
+        printf("%d %d %d\n",justFE,dostring,ens);
         printf("%d\n",flag);
     }
+    
+
     
     
     //Decide which processors do what
@@ -969,7 +963,8 @@ int main (int argc, char *argv[])
             fclose(out);
         }
     }
-    solve_field(W,chi,f,D2,alf,doiis,ndo,whois,procid,numprocs,-1,nsterp); //solve W_-
+    if (justFE!=1) //If flag is set to just find the free energy, then don't bother to converge W_-
+        solve_field(W,chi,f,D2,alf,doiis,ndo,whois,procid,numprocs,dostring,-1,nsterp); //solve W_-
     
     for(ii=0;ii<strn;ii++)
         MPI_Bcast(W[ii], M*2, MPI_DOUBLE, whois[ii], MPI_COMM_WORLD);
@@ -977,32 +972,7 @@ int main (int argc, char *argv[])
     
     tistr();
     printf("Fields solved (%d) (Time: %s)\n",procid,tms);
-    
-    /*
-    //calculate free energies
-    double FEs0[strn],FEs1[strn],FEs[strn],wa,wb,phctot[strn], FE=0;
-    for(ii=0;ii<strn;ii++){
-        if(doiis[ii]==1) solve_field0(W, chi, f, D2, ii, 1E2, 1E-4); //solve W_+
-        D2->props(W[ii], &lnQ, ii, NA+NB, alpha, phidb, phis, f);
-        FEs0[ii] = -lnQ;
-        FEs1[ii]=0;
-        phctot[ii]=0;
-        for(int r=0;r<M;r++) {
-            wa=W[ii][r]+W[ii][r+M]; wb=W[ii][r+M]-W[ii][r];//can be calculated using W_- and W_+ directly. doesn't make a difference. I chose htis way because it's simpler to adapt to more species
-            FEs1[ii] += (chi*phiA[ii][r]*phiB[ii][r]-wa*phiA[ii][r]-wb*phiB[ii][r])/M;
-            //FEs1[ii] += (W[ii][r]*W[ii][r]/chi - W[ii][r+M])/M; You cna use this instead... just changes FE by a constant
-            phctot[ii]+=phiA[ii][r]/(M*f);
-        }
-        FEs[ii] = FEs0[ii] + FEs1[ii];
-        FE+=FEs[ii]; //rudementary error check to make sure nothing is nan
-    }
-    for(ii=0;ii<strn;ii++){
-        MPI_Bcast(&FEs[ii], 1, MPI_DOUBLE, whois[ii], MPI_COMM_WORLD);
-        MPI_Bcast(&FEs0[ii], 1, MPI_DOUBLE, whois[ii], MPI_COMM_WORLD);
-        MPI_Bcast(&FEs1[ii], 1, MPI_DOUBLE, whois[ii], MPI_COMM_WORLD);
-    }
-    MPI_Barrier(MPI_COMM_WORLD);
-    */
+
     //calculate and print free energy
     double FEs0[strn],FEs1[strn],FEs[strn],phctot[strn], FE;
     FE= FreeE(W, chi,  f, D2, alf, doiis, ndo, whois, procid, FEs0, FEs1, FEs, phctot, numprocs, 1);
