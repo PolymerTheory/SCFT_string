@@ -110,34 +110,69 @@ std::unordered_map<std::string, std::vector<double>> readParameters(const std::s
 //==============================================================
 // set values of parameters
 //==============================================================
-void setParameters(const std::unordered_map<std::string, std::vector<double>>& params, double& chi, double& f, double& phidb, int& N, int& flag, int& justFE, int& dostring, int& ens, int m[], double D[], int fix[]) {
-    if (params.find("chi") != params.end()) chi = params.at("chi").front();
-    if (params.find("f") != params.end()) f = params.at("f").front();
-    if (params.find("phidb") != params.end()) phidb = params.at("phidb").front();
-    if (params.find("N") != params.end()) N = static_cast<int>(params.at("N").front());
-    if (params.find("flag") != params.end()) flag = static_cast<int>(params.at("flag").front());
-    if (params.find("ens") != params.end()) flag = static_cast<int>(params.at("ens").front());
-    if (params.find("justFE") != params.end()) flag = static_cast<int>(params.at("justFE").front());
-    if (params.find("dostring") != params.end()) flag = static_cast<int>(params.at("dostring").front());
+void setParameters(const std::unordered_map<std::string, std::vector<double>>& params, double& chi, double& f, double& phidb, int& N, int& flag, int& justFE, int& dostring, int& ens, int m[], double D[], int fix[], int procid) {
+    if (params.find("chi") != params.end()) {
+        chi = params.at("chi").front();
+        if(procid==0) std::cout << "Setting chi to " << chi << ".\n";
+    }
+    if (params.find("f") != params.end()) {
+        f = params.at("f").front();
+        if(procid==0) std::cout << "Setting f to " << f << ".\n";
+    }
+    if (params.find("phidb") != params.end()) {
+        phidb = params.at("phidb").front();
+        if(procid==0) std::cout << "Setting phidb to " << phidb << ".\n";
+    }
+    if (params.find("N") != params.end()) {
+        N = static_cast<int>(params.at("N").front());
+        if(procid==0) std::cout << "Setting N to " << N << ".\n";
+    }
+    if (params.find("flag") != params.end()) {
+        flag = static_cast<int>(params.at("flag").front());
+        if(procid==0) std::cout << "Setting flag to " << flag << ".\n";
+    }
+    if (params.find("ens") != params.end()) {
+        ens = static_cast<int>(params.at("ens").front());
+        if(procid==0) std::cout << "Setting ens to " << ens << ".\n";
+    }
+    if (params.find("justFE") != params.end()) {
+        justFE = static_cast<int>(params.at("justFE").front());
+        if(procid==0) std::cout << "Setting justFE to " << justFE << ".\n";
+    }
+    if (params.find("dostring") != params.end()) {
+        dostring = static_cast<int>(params.at("dostring").front());
+        if(procid==0) std::cout << "Setting dostring to " << dostring << ".\n";
+    }
+    // For m, D, and fix arrays, print each value as it is set
     if (params.find("m") != params.end()) {
         const auto& values = params.at("m");
+        if(procid==0) std::cout << "Setting m to";
         for (size_t i = 0; i < values.size() && i < 3; ++i) {
             m[i] = static_cast<int>(values[i]);
+            if(procid==0) std::cout << " " << m[i];
         }
+        if(procid==0) std::cout << ".\n";
     }
     if (params.find("D") != params.end()) {
         const auto& values = params.at("D");
+        if(procid==0) std::cout << "Setting D to";
         for (size_t i = 0; i < values.size() && i < 3; ++i) {
             D[i] = values[i];
+            if(procid==0) std::cout << " " << D[i];
         }
+        if(procid==0) std::cout << ".\n";
     }
     if (params.find("fix") != params.end()) {
         const auto& values = params.at("fix");
+        if(procid==0) std::cout << "Setting fix to";
         for (size_t i = 0; i < values.size() && i < 2; ++i) {
             fix[i] = static_cast<int>(values[i]);
+            if(procid==0) std::cout << " " << fix[i];
         }
+        if(procid==0) std::cout << ".\n";
     }
 }
+
 
 //==============================================================
 // counts the number of lines in a file
@@ -755,7 +790,6 @@ int main (int argc, char *argv[])
     srand(seed);
     
     //test gpu
-    printf("Hello World from host!\n");
     print_from_gpu<<<1,1>>>();
     cudaDeviceSynchronize();
     
@@ -776,7 +810,7 @@ int main (int argc, char *argv[])
     //initialize mpi
     ierr = MPI_Comm_size ( MPI_COMM_WORLD, &numprocs );
     ierr = MPI_Comm_rank ( MPI_COMM_WORLD, &procid );
-    printf("Hello from procid %d/%d\n",procid,numprocs);
+    printf("Testing MPI: procid %d/%d\n",procid,numprocs);
     
     
     
@@ -790,15 +824,15 @@ int main (int argc, char *argv[])
     } else {
         finc = "input.dat";
     }
-    printf("Reading input from %s\n",finc.c_str());
+    if(procid==0)printf("Reading input from %s\n\n",finc.c_str());
     
     auto params = readParameters(finc); //read in parameters
-    setParameters(params, chi, f, phidb, N, flag, justFE, dostring, ens, m, D, fix); //set parameter values
+    setParameters(params, chi, f, phidb, N, flag, justFE, dostring, ens, m, D, fix, procid); //set parameter values
 
     double V = D[2]*D[1]*D[0];
     
     if(procid==0){
-        
+        printf("\n");
         if(justFE==1)
             printf("WARNING: flag justFE=%d so W_- will not be converged. Only do this if you are happy with the field/string.\n",justFE);
         if(dostring==1)
@@ -807,18 +841,11 @@ int main (int argc, char *argv[])
             printf("Running WITHOUT string (i.e. NOT coupling replicas using the string method)\n");
         if(ens==1){
             printf("Using the canonical ensemble\n");
-            printf("WARNING: when changing ensembles I usually change the code. I'm playing with making this a flag so it is easily changed, but I have not thourally tested the canonical ensemble implementation in this version.\n");
+            printf("WARNING: When changing ensembles, I usually modify the code. I'm experimenting with making this changeable through a flag for convenience, but I have not thoroughly tested the canonical ensemble implementation in this version.\n");
         } else if(ens==2){
             printf("Using the grand canonical ensemble\n");
         }
-        
-        printf("Input parameters:\n");
-        printf("%lf %lf %lg\n",chi,f,phidb);
-        printf("%d %d %d %d\n",N,m[0],m[1],m[2]);
-        printf("%lf %lf %lf\n",D[0],D[1],D[2]);
-        printf("%d %d\n",fix[0],fix[1]);
-        printf("%d %d %d\n",justFE,dostring,ens);
-        printf("%d\n",flag);
+        printf("\n");
     }
     
 
