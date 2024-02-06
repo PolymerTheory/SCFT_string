@@ -22,6 +22,10 @@ The argument ("input.dat" above) is optional but specifies the file from which i
 - **justFE:** tells the code if to just calculate free energy (i.e., leave W_- as is)
 - **dostring:** tells the code if to use the string method i.e., couple the replicas
 
+- **W input**: (if flag==1) fields (W) are input from files of the form win? where ? is the replica number along the string
+
+The number of points on the string is hard-coded (see near the top of scft.cu). It turned out to be annoying to put it in the input file.
+
 The parameters that look like they should be boolians (e.g. 'dostring') take integers with 0=no, 1=yes
 
 ## Outputs
@@ -29,7 +33,7 @@ The parameters that look like they should be boolians (e.g. 'dostring') take int
 The code outputs parameters etc., to inform you about the current stage. It periodically outputs the 'error' (the RMS exchange chemical potential) in the main loop (solve_field subroutine) to indicate how far the field is from equilibrium.
 
 ### Files
-The code periodically outputs fields (win_) and A monomer concentration (rhoA__.vtk) in a VTK format for ease of visualization. It also outputs a "check" file detailing 'errors'. After convergence, it calculates and outputs the free energy to a file 'FEs' together with the string position ('alpha'), the free energy, and the average lipid composition.
+The code periodically outputs fields (win?) and A monomer concentration (rhoA_?.vtk) in a VTK format for ease of visualization. It also outputs a "check" file detailing 'errors'. After convergence, it calculates and outputs the free energy to a file 'FEs' together with the string position ('alpha'), the free energy, and the average lipid composition.
 
 ## Warning about Convergence
 ###Short version:  
