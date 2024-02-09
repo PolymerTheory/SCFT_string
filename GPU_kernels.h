@@ -53,8 +53,7 @@ void HandleError(cufftResult err, char const * const file, int const line)
 
 //print hello (check if things are working with gpu)
 __global__ void print_from_gpu(void) {
-    printf("Testing GPUs: [%d,%d] \
-        From device\n", threadIdx.x,blockIdx.x);
+    printf("Testing GPUs: [%d,%d] (From device)\n", threadIdx.x,blockIdx.x);
 }
 
 
