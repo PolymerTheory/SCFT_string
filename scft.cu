@@ -113,35 +113,60 @@ std::unordered_map<std::string, std::vector<double>> readParameters(const std::s
 void setParameters(const std::unordered_map<std::string, std::vector<double>>& params, double& chi, double& f, double& phidb, int& N, int& flag, int& justFE, int& dostring, int& ens, int m[], double D[], int fix[], int procid) {
     if (params.find("chi") != params.end()) {
         chi = params.at("chi").front();
-        if(procid==0) std::cout << "Setting chi to " << chi << ".\n";
+        if(procid==0) std::cout << "Setting chi to " << chi << ". (Flory-Huggins parameter, xN)\n";
     }
     if (params.find("f") != params.end()) {
         f = params.at("f").front();
-        if(procid==0) std::cout << "Setting f to " << f << ".\n";
-    }
-    if (params.find("phidb") != params.end()) {
-        phidb = params.at("phidb").front();
-        if(procid==0) std::cout << "Setting phidb to " << phidb << ".\n";
+        if(procid==0) std::cout << "Setting f to " << f << ". (Volume fraction of A component in copolymer)\n";
     }
     if (params.find("N") != params.end()) {
         N = static_cast<int>(params.at("N").front());
-        if(procid==0) std::cout << "Setting N to " << N << ".\n";
+        if(procid==0) std::cout << "Setting N to " << N << ". (Number of steps along the copolymer)\n";
     }
     if (params.find("flag") != params.end()) {
         flag = static_cast<int>(params.at("flag").front());
-        if(procid==0) std::cout << "Setting flag to " << flag << ".\n";
+        if(procid==0){
+            std::cout << "Setting flag to " << flag;
+            if(flag==0) std::cout << ". (Making up stuff for initial configurations)";
+            if(flag==1) std::cout << ". (reading configurations from win files)";
+            std::cout << "\n";
+        }
     }
     if (params.find("ens") != params.end()) {
         ens = static_cast<int>(params.at("ens").front());
-        if(procid==0) std::cout << "Setting ens to " << ens << ".\n";
+        if(procid==0){
+            std::cout << "Setting ens to " << ens;
+            if(ens==1) std::cout << ". (canonical ensemble)";
+            if(ens==2) std::cout << ". (grand canonical ensemble)";
+            std::cout << "\n";
+        }
+    }
+    if (params.find("phidb") != params.end()) {
+        phidb = params.at("phidb").front();
+        if(procid==0) {
+            std::cout << "Setting phidb to " << phidb;
+            if(ens==1) std::cout << ". (copolymer concentration)";
+            if(ens==2) std::cout << ". (copolymer fugacity)";
+            std::cout << "\n";
+        }
     }
     if (params.find("justFE") != params.end()) {
         justFE = static_cast<int>(params.at("justFE").front());
-        if(procid==0) std::cout << "Setting justFE to " << justFE << ".\n";
+        if(procid==0){
+            std::cout << "Setting justFE to " << justFE;
+            if(justFE==0) std::cout << ". (relaxing the W_-)";
+            if(justFE==1) std::cout << ". (just calculating the free energy - no relaxation of W_-)";
+            std::cout << "\n";
+        }
     }
     if (params.find("dostring") != params.end()) {
         dostring = static_cast<int>(params.at("dostring").front());
-        if(procid==0) std::cout << "Setting dostring to " << dostring << ".\n";
+        if(procid==0){
+            std::cout << "Setting dostring to " << dostring;
+            if(dostring==0) std::cout << ". (independent replicas)";
+            if(dostring==1) std::cout << ". (string calculation)";
+            std::cout << "\n";
+        }
     }
     // For m, D, and fix arrays, print each value as it is set
     if (params.find("m") != params.end()) {
@@ -151,7 +176,7 @@ void setParameters(const std::unordered_map<std::string, std::vector<double>>& p
             m[i] = static_cast<int>(values[i]);
             if(procid==0) std::cout << " " << m[i];
         }
-        if(procid==0) std::cout << ".\n";
+        if(procid==0) std::cout << ". (steps in space along the 3 dimensions)\n";
     }
     if (params.find("D") != params.end()) {
         const auto& values = params.at("D");
@@ -160,7 +185,7 @@ void setParameters(const std::unordered_map<std::string, std::vector<double>>& p
             D[i] = values[i];
             if(procid==0) std::cout << " " << D[i];
         }
-        if(procid==0) std::cout << ".\n";
+        if(procid==0) std::cout << ". (system dimensions in units of R_0)\n";
     }
     if (params.find("fix") != params.end()) {
         const auto& values = params.at("fix");
@@ -169,13 +194,19 @@ void setParameters(const std::unordered_map<std::string, std::vector<double>>& p
             fix[i] = static_cast<int>(values[i]);
             if(procid==0) std::cout << " " << fix[i];
         }
-        if(procid==0) std::cout << ".\n";
+        if(procid==0) {
+            if(fix[0]==0 && fix[1]==0) std::cout << ". i.e. ends are free to relax.\n";
+            if(fix[0]==1 && fix[1]==1) std::cout << ". i.e. ends are fixed.\n";
+            if(fix[0]==0 && fix[1]==1) std::cout << ". i.e. last replica is fixed.\n";
+            if(fix[0]==1 && fix[1]==0) std::cout << ". i.e. first replica is fixed.\n";
+        }
     }
 }
 
 
 //==============================================================
 // counts the number of lines in a file
+// (useful for inputs to make sure field files have the right system size)
 // (useful for inputs to make sure field files have the right system size)
 //--------------------------------------------------------------
 int lines(const std::string& fname){
@@ -532,9 +563,7 @@ int solve_field (double **W, const double chi, const double f, density *D2, doub
         if(doii==-1){
             Delsum=0;
             for(ii=0;ii<strn-1;ii++){ //distances
-                Del[ii]=0;
-                for(r=0; r<M; r++) Del[ii]+=pow(W[ii][r]-W[ii+1][r],2.0);
-                Del[ii]=sqrt(Del[ii]);
+                Del[ii]=EDist(W, ii, ii+1);
                 Delsum+=Del[ii];
             }
             for(ii=0;ii<strn-1;ii++) Del[ii]/=Delsum; //sum distances
@@ -647,9 +676,7 @@ int solve_field (double **W, const double chi, const double f, density *D2, doub
         if(doii==-1){
             Delsum=0;
             for(ii=0;ii<strn-1;ii++){
-                Del[ii]=0;
-                for(r=0; r<M; r++) Del[ii]+=pow(W[ii][r]-W[ii+1][r],2.0);
-                Del[ii]=sqrt(Del[ii]);
+                Del[ii]=EDist(W, ii, ii+1);
                 Delsum+=Del[ii];
             }
             
@@ -730,6 +757,7 @@ int solve_field (double **W, const double chi, const double f, density *D2, doub
 double FreeE (double **W, const double chi, const double f, density *D2, double *alf, int *doiis, int *ndo, int *whois, int procid, double *FEs0, double *FEs1, double *FEs, double *phctot, int numprocs, int printfe, int doii, const int maxIter, const double errTol){
     //calculate free energies
     double wa,wb,FE=0, lnQ;
+    alf[0]=0;
     for(int ii=0;ii<strn;ii++){
         if(doiis[ii]==1 || (procid==0 && ii==0) || (procid==(numprocs-1) && ii==(strn-1)) ) { //other 2 conditions to make sure to get ii=0 and 1 if fix==1
             solve_field0(W, chi, f, D2, ii, 1E2, 1E-4); //solve W_+
@@ -738,18 +766,21 @@ double FreeE (double **W, const double chi, const double f, density *D2, double 
             FEs1[ii]=0;
             phctot[ii]=0;
             for(int r=0;r<M;r++) {
-                wa=W[ii][r]+W[ii][r+M]; wb=W[ii][r+M]-W[ii][r];//can be calculated using W_- and W_+ directly. doesn't make a difference. I chose htis way because it's simpler to adapt to more species
+                wa=W[ii][r]+W[ii][r+M]; wb=W[ii][r+M]-W[ii][r];//can be calculated using W_- and W_+ directly. doesn't make a difference. I chose this way because it's simpler to adapt to more species
                 FEs1[ii] += (chi*phiA[ii][r]*phiB[ii][r]-wa*phiA[ii][r]-wb*phiB[ii][r])/M;
-                //FEs1[ii] += (W[ii][r]*W[ii][r]/chi - W[ii][r+M])/M; You cna use this instead... just changes FE by a constant
+                //FEs1[ii] += (W[ii][r]*W[ii][r]/chi - W[ii][r+M])/M; You can use this instead... just changes FE by a constant
                 phctot[ii]+=phiA[ii][r]/(M*f);
             }
             FEs[ii] = FEs0[ii] + FEs1[ii];
         }
+        if(ii>0)
+            alf[ii] = alf[ii-1]+EDist(W, ii, ii-1);
     }
     for(int ii=0;ii<strn;ii++){
         MPI_Bcast(&FEs[ii], 1, MPI_DOUBLE, whois[ii], MPI_COMM_WORLD);
         MPI_Bcast(&FEs0[ii], 1, MPI_DOUBLE, whois[ii], MPI_COMM_WORLD);
         MPI_Bcast(&FEs1[ii], 1, MPI_DOUBLE, whois[ii], MPI_COMM_WORLD);
+        MPI_Bcast(&phctot[ii], 1, MPI_DOUBLE, whois[ii], MPI_COMM_WORLD);
     }
     for(int ii=0;ii<strn;ii++) FE+=FEs[ii];
     MPI_Barrier(MPI_COMM_WORLD);
@@ -759,7 +790,7 @@ double FreeE (double **W, const double chi, const double f, density *D2, double 
         outfl = "FEs";
         out = fopen(outfl.c_str(),"w");
         //for(ii=0;ii<strn;ii++) fprintf(out,"%lf\t%.10lf\t%.10lf\t%.10lf\t%.10lf\n",alf[ii],FEs[ii],FEs0[ii],FEs1[ii],phctot[ii]); //if you want the breakdown of free energies.
-        for(int ii=0;ii<strn;ii++) fprintf(out,"%lf\t%.10lf\t%.10lf\n",alf[ii],FEs[ii],phctot[ii]);
+        for(int ii=0;ii<strn;ii++) fprintf(out,"%lf\t%.10lf\t%.10lf\n",alf[ii]/alf[strn-1],FEs[ii],phctot[ii]);
         fclose(out);
     }
     
@@ -840,10 +871,10 @@ int main (int argc, char *argv[])
         else
             printf("Running WITHOUT string (i.e. NOT coupling replicas using the string method)\n");
         if(ens==1){
-            printf("Using the canonical ensemble\n");
+            printf("Using the canonical ensemble. phidb = %lg is the volue fraction of copolymer.\n",phidb);
             printf("WARNING: When changing ensembles, I usually modify the code. I'm experimenting with making this changeable through a flag for convenience, but I have not thoroughly tested the canonical ensemble implementation in this version.\n");
         } else if(ens==2){
-            printf("Using the grand canonical ensemble\n");
+            printf("Using the grand canonical ensemble. phidb = %lg is the fugacity.\n",phidb);
         }
         printf("\n");
     }
