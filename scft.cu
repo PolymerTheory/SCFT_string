@@ -131,7 +131,7 @@ void setParameters(const std::unordered_map<std::string, std::vector<double>>& p
         std::cout << "Using default N = " << N << ". (Number of steps along the copolymer)\n";
     //alpha
     if (params.find("alpha") != params.end()) {
-        alpha = static_cast<int>(params.at("alpha").front());
+        alpha = params.at("alpha").front();
         if(procid==0) std::cout << "Setting alpha to " << alpha << ". (ratio of Nh to N)\n";
     } else if(procid==0)
         std::cout << "Using default alpha = " << alpha << ". (ratio of Nh to N)\n";
