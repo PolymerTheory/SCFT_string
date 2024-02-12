@@ -110,65 +110,100 @@ std::unordered_map<std::string, std::vector<double>> readParameters(const std::s
 //==============================================================
 // set values of parameters
 //==============================================================
-void setParameters(const std::unordered_map<std::string, std::vector<double>>& params, double& chi, double& f, double& phidb, int& N, int& flag, int& justFE, int& dostring, int& ens, int m[], double D[], int fix[], int procid) {
+void setParameters(const std::unordered_map<std::string, std::vector<double>>& params, double& chi, double& f, double& phidb, double& alpha, int& N, int& flag, int& justFE, int& dostring, int& ens, int m[], double D[], int fix[], int procid) {
+    //chi
     if (params.find("chi") != params.end()) {
         chi = params.at("chi").front();
         if(procid==0) std::cout << "Setting chi to " << chi << ". (Flory-Huggins parameter, xN)\n";
-    }
+    } else if(procid==0)
+        std::cout << "Using default chi = " << chi << ". (Flory-Huggins parameter, xN)\n";
+    //f
     if (params.find("f") != params.end()) {
         f = params.at("f").front();
         if(procid==0) std::cout << "Setting f to " << f << ". (Volume fraction of A component in copolymer)\n";
-    }
+    } else if(procid==0)
+        std::cout << "Using default f = " << f << ". (Volume fraction of A component in copolymer)\n";
+    //N
     if (params.find("N") != params.end()) {
         N = static_cast<int>(params.at("N").front());
         if(procid==0) std::cout << "Setting N to " << N << ". (Number of steps along the copolymer)\n";
-    }
+    } else if(procid==0)
+        std::cout << "Using default N = " << N << ". (Number of steps along the copolymer)\n";
+    //alpha
+    if (params.find("alpha") != params.end()) {
+        alpha = static_cast<int>(params.at("alpha").front());
+        if(procid==0) std::cout << "Setting alpha to " << alpha << ". (ratio of Nh to N)\n";
+    } else if(procid==0)
+        std::cout << "Using default alpha = " << alpha << ". (ratio of Nh to N)\n";
+    //flag
     if (params.find("flag") != params.end()) {
         flag = static_cast<int>(params.at("flag").front());
         if(procid==0){
             std::cout << "Setting flag to " << flag;
-            if(flag==0) std::cout << ". (Making up stuff for initial configurations)";
-            if(flag==1) std::cout << ". (reading configurations from win files)";
-            std::cout << "\n";
         }
+    } else if(procid==0){
+        std::cout << "Using default flag = " << flag;
     }
+    if(procid==0){
+        if(flag==0) std::cout << ". (Making up stuff for initial configurations)";
+        if(flag==1) std::cout << ". (reading configurations from win files)";
+        std::cout << "\n";
+    }
+    //ens
     if (params.find("ens") != params.end()) {
         ens = static_cast<int>(params.at("ens").front());
         if(procid==0){
             std::cout << "Setting ens to " << ens;
-            if(ens==1) std::cout << ". (canonical ensemble)";
-            if(ens==2) std::cout << ". (grand canonical ensemble)";
-            std::cout << "\n";
         }
+    } else if(procid==0){
+        std::cout << "Using default ens = " << ens;
     }
+    if(procid==0){
+        if(ens==1) std::cout << ". (canonical ensemble)";
+        if(ens==2) std::cout << ". (grand canonical ensemble)";
+        std::cout << "\n";
+    }
+    //phidb
     if (params.find("phidb") != params.end()) {
         phidb = params.at("phidb").front();
         if(procid==0) {
             std::cout << "Setting phidb to " << phidb;
-            if(ens==1) std::cout << ". (copolymer concentration)";
-            if(ens==2) std::cout << ". (copolymer fugacity)";
-            std::cout << "\n";
         }
+    } else if(procid==0)
+        std::cout << "Using default phidb = " << phidb;
+    if(procid==0) {
+        if(ens==1) std::cout << ". (copolymer concentration)";
+        if(ens==2) std::cout << ". (copolymer fugacity)";
+        std::cout << "\n";
     }
+    //justFE
     if (params.find("justFE") != params.end()) {
         justFE = static_cast<int>(params.at("justFE").front());
         if(procid==0){
             std::cout << "Setting justFE to " << justFE;
-            if(justFE==0) std::cout << ". (relaxing the W_-)";
-            if(justFE==1) std::cout << ". (just calculating the free energy - no relaxation of W_-)";
-            std::cout << "\n";
         }
+    } else if(procid==0)
+        std::cout << "Using default justFE = " << justFE;
+    if(procid==0){
+        if(justFE==0) std::cout << ". (relaxing the W_-)";
+        if(justFE==1) std::cout << ". (just calculating the free energy - no relaxation of W_-)";
+        std::cout << "\n";
     }
+    //dostring
     if (params.find("dostring") != params.end()) {
         dostring = static_cast<int>(params.at("dostring").front());
         if(procid==0){
             std::cout << "Setting dostring to " << dostring;
-            if(dostring==0) std::cout << ". (independent replicas)";
-            if(dostring==1) std::cout << ". (string calculation)";
-            std::cout << "\n";
         }
+    } else if(procid==0)
+        std::cout << "Using default dostring = " << dostring;
+    if(procid==0){
+        if(dostring==0) std::cout << ". (independent replicas)";
+        if(dostring==1) std::cout << ". (string calculation)";
+        std::cout << "\n";
     }
     // For m, D, and fix arrays, print each value as it is set
+    //m
     if (params.find("m") != params.end()) {
         const auto& values = params.at("m");
         if(procid==0) std::cout << "Setting m to";
@@ -177,7 +212,9 @@ void setParameters(const std::unordered_map<std::string, std::vector<double>>& p
             if(procid==0) std::cout << " " << m[i];
         }
         if(procid==0) std::cout << ". (steps in space along the 3 dimensions)\n";
-    }
+    } else if(procid==0)
+        std::cout << "Using default m = " << m[0] << " " << m[1] << " " << m[2] <<  ". (steps in space along the 3 dimensions)\n";
+    //D
     if (params.find("D") != params.end()) {
         const auto& values = params.at("D");
         if(procid==0) std::cout << "Setting D to";
@@ -186,7 +223,9 @@ void setParameters(const std::unordered_map<std::string, std::vector<double>>& p
             if(procid==0) std::cout << " " << D[i];
         }
         if(procid==0) std::cout << ". (system dimensions in units of R_0)\n";
-    }
+    } else if(procid==0)
+        std::cout << "Using default D = " << D[0] << " " << D[1] << " " << D[2] <<  ". (system dimensions in units of R_0)\n";
+    //fix
     if (params.find("fix") != params.end()) {
         const auto& values = params.at("fix");
         if(procid==0) std::cout << "Setting fix to";
@@ -194,12 +233,13 @@ void setParameters(const std::unordered_map<std::string, std::vector<double>>& p
             fix[i] = static_cast<int>(values[i]);
             if(procid==0) std::cout << " " << fix[i];
         }
-        if(procid==0) {
-            if(fix[0]==0 && fix[1]==0) std::cout << ". i.e. ends are free to relax.\n";
-            if(fix[0]==1 && fix[1]==1) std::cout << ". i.e. ends are fixed.\n";
-            if(fix[0]==0 && fix[1]==1) std::cout << ". i.e. last replica is fixed.\n";
-            if(fix[0]==1 && fix[1]==0) std::cout << ". i.e. first replica is fixed.\n";
-        }
+    } else if(procid==0)
+        std::cout << "Using default fix";
+    if(procid==0) {
+        if(fix[0]==0 && fix[1]==0) std::cout << ". i.e. ends are free to relax.\n";
+        if(fix[0]==1 && fix[1]==1) std::cout << ". i.e. ends are fixed.\n";
+        if(fix[0]==0 && fix[1]==1) std::cout << ". i.e. last replica is fixed.\n";
+        if(fix[0]==1 && fix[1]==0) std::cout << ". i.e. first replica is fixed.\n";
     }
 }
 
@@ -856,9 +896,13 @@ int main (int argc, char *argv[])
         finc = "input.dat";
     }
     if(procid==0)printf("Reading input from %s\n\n",finc.c_str());
+    //default values that have not alrady been set above
+    m[0]=50; m[1]=50; m[2]=50;
+    D[0]=4; D[1]=4; D[2]=4;
+    fix[0]=0; fix[1]=0;
     
     auto params = readParameters(finc); //read in parameters
-    setParameters(params, chi, f, phidb, N, flag, justFE, dostring, ens, m, D, fix, procid); //set parameter values
+    setParameters(params, chi, f, phidb, alpha, N, flag, justFE, dostring, ens, m, D, fix, procid); //set parameter values
 
     double V = D[2]*D[1]*D[0];
     
