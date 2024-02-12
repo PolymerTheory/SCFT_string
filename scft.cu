@@ -996,9 +996,11 @@ int main (int argc, char *argv[])
     for(ii=0;ii<strn;ii++)
         MPI_Bcast(W[ii], M*2, MPI_DOUBLE, whois[ii], MPI_COMM_WORLD);
     MPI_Barrier(MPI_COMM_WORLD);
-    
-    tistr();
-    printf("Fields solved (%d) (Time: %s)\n",procid,tms);
+
+    if (justFE!=1){
+        tistr();
+        printf("Fields solved (%d) (Time: %s)\n",procid,tms);
+    }
 
     //calculate and print free energy
     double FEs0[strn],FEs1[strn],FEs[strn],phctot[strn], FE;
