@@ -430,7 +430,7 @@ public:
         phis[0] /= M; phis[1] /= M; phis[2] /= M; phis[3] /= M; phis[4] /= M;
         
         //send stuff to host array
-        HANDLE_ERROR(cudaMemcpy(phiA, dev_rA, 10 * M * sizeof(double), cudaMemcpyDeviceToHost));
+        HANDLE_ERROR(cudaMemcpy(phiA, dev_rA, 4 * M * sizeof(double), cudaMemcpyDeviceToHost));
         
     }
     

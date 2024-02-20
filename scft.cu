@@ -34,14 +34,14 @@ using namespace std;
 
 constexpr int strn = 48; // number of steps on string. //should probably be in input file but it doesn't change that often and that makes it annoying to use in kernels the way I do
 
-int m[3], M, Mk, NA, NB, ens=2;
-double dsA, dsB, pi=4*atan(1.0), phidb, D[3], *F,alpha=0.1,phis[6];
+int m[3], M, Mk, N=60, ens=2;
+double pi=4*atan(1.0), phidb, D[3], *F,alpha=0.1,phis[6];
 double ***DEV, ***DDEV, ***WIN;
 double *expKA, *expKB, *expKA2, *expKB2;
 int fix[2];
 
 double ***q1, ***q2, **W, *cubes; //propagators, fields and stuff for cubic spline
-double **phiA, **phiB, **phih, **phicB, **Wp, **Wm, **phip, **phim; //condentrations
+double **phiA, **phiB, **phih, **phicB; //condentrations
 int springsteps=0;
 FILE *in, *out;
 double **dWda;
@@ -110,7 +110,7 @@ std::unordered_map<std::string, std::vector<double>> readParameters(const std::s
 //==============================================================
 // set values of parameters
 //==============================================================
-void setParameters(const std::unordered_map<std::string, std::vector<double>>& params, double& chi, double& f, double& phidb, double& alpha, int& N, int& flag, int& justFE, int& dostring, int& ens, int m[], double D[], int fix[], int procid) {
+void setParameters(const std::unordered_map<std::string, std::vector<double>>& params, double& chi, double& f, double& phidb, double& alpha, int& N, int& readwin, int& justFE, int& dostring, int& ens, int m[], double D[], int fix[], int procid) {
     //chi
     if (params.find("chi") != params.end()) {
         chi = params.at("chi").front();
@@ -135,18 +135,18 @@ void setParameters(const std::unordered_map<std::string, std::vector<double>>& p
         if(procid==0) std::cout << "Setting alpha to " << alpha << ". (ratio of Nh to N)\n";
     } else if(procid==0)
         std::cout << "Using default alpha = " << alpha << ". (ratio of Nh to N)\n";
-    //flag
-    if (params.find("flag") != params.end()) {
-        flag = static_cast<int>(params.at("flag").front());
+    //readwin
+    if (params.find("readwin") != params.end()) {
+        readwin = static_cast<int>(params.at("readwin").front());
         if(procid==0){
-            std::cout << "Setting flag to " << flag;
+            std::cout << "Setting readwin to " << readwin;
         }
     } else if(procid==0){
-        std::cout << "Using default flag = " << flag;
+        std::cout << "Using default readwin = " << readwin;
     }
     if(procid==0){
-        if(flag==0) std::cout << ". (Making up stuff for initial configurations)";
-        if(flag==1) std::cout << ". (reading configurations from win files)";
+        if(readwin==0) std::cout << ". (Making up stuff for initial configurations)";
+        if(readwin==1) std::cout << ". (reading configurations from win files)";
         std::cout << "\n";
     }
     //ens
@@ -514,7 +514,7 @@ int solve_field0 (double **W, const double chi, const double f, density *D2, int
     double errt=1,dlam1=1.09,dlam2=1.10;
     
     for (k=1; k<maxIter && err>errTol; k++) {
-        D2->props(W[ii], &lnQ, ii, NA+NB, alpha, phidb, phis, f);
+        D2->props(W[ii], &lnQ, ii, N, alpha, phidb, phis, f);
         for (r=0; r<M; r++) {
             DEV[ii][0][r]   = 0;  //remove and change loops below
             DEV[ii][0][r+M] = chi*(phiB[ii][r]+phiA[ii][r] - 1.0);
@@ -591,9 +591,9 @@ int solve_field (double **W, const double chi, const double f, density *D2, doub
                 //solve W_+ (at least partially) for each step in W_-
                 //if you don't do this, it can become unstable and/or otherwise mess up
                 steps[ii]+=solve_field0(W, chi, f, D2, ii, 20, errTol);
-                D2->props(W[ii], &lnQ, ii, NA+NB, alpha, phidb, phis, f);
+                D2->props(W[ii], &lnQ, ii, N, alpha, phidb, phis, f);
                 for (r=0; r<M; r++) {
-                    DEV[ii][0][r] = (chi*(phiB[ii][r]-phiA[ii][r]) - 2.0*W[ii][r]);
+                    DEV[ii][0][r] = chi*(phiB[ii][r]-phiA[ii][r]) - 2.0*W[ii][r];
                     if(ii>0 && ii<strn-1 && dospring==1) DEV[ii][0][r] += eps*(W[ii+1][r] + W[ii-1][r] - 2.0*W[ii][r]);
                     DEV[ii][0][r+M] = chi*(phiB[ii][r]+phiA[ii][r] - 1.0); //note that this is chi * the usual error/change in W_+ that people usually use (and the error is usually given as the deviation of the total density, not chi*that). I set it like this so it looks the same as the usual W_A and W_B updates. It is arbitrary, but this way overestimates the W_+ error (relative to the usual W_+ approach).
                 }
@@ -801,7 +801,7 @@ double FreeE (double **W, const double chi, const double f, density *D2, double 
     for(int ii=0;ii<strn;ii++){
         if(doiis[ii]==1 || (procid==0 && ii==0) || (procid==(numprocs-1) && ii==(strn-1)) ) { //other 2 conditions to make sure to get ii=0 and 1 if fix==1
             solve_field0(W, chi, f, D2, ii, 1E2, 1E-4); //solve W_+
-            D2->props(W[ii], &lnQ, ii, NA+NB, alpha, phidb, phis, f);
+            D2->props(W[ii], &lnQ, ii, N, alpha, phidb, phis, f);
             FEs0[ii] = -lnQ;
             FEs1[ii]=0;
             phctot[ii]=0;
@@ -854,7 +854,7 @@ double FreeE (double **W, const double chi, const double f, density *D2, double 
 int main (int argc, char *argv[])
 {
     double chi=30, f=0.8;//paraeters with default values
-    int    x, y, z, r, N=60, flag=1,ii=0,justFE=0,dostring=1;
+    int    x, y, z, r, readwin=1,ii=0,justFE=0,dostring=1;
     time0 = time(NULL); //code start time
     
     int seed = (12345+time(NULL));
@@ -895,14 +895,23 @@ int main (int argc, char *argv[])
     } else {
         finc = "input.dat";
     }
-    if(procid==0)printf("Reading input from %s\n\n",finc.c_str());
-    //default values that have not alrady been set above
+    
+    
+    //default values that have not already been set above
     m[0]=50; m[1]=50; m[2]=50;
     D[0]=4; D[1]=4; D[2]=4;
     fix[0]=0; fix[1]=0;
     
-    auto params = readParameters(finc); //read in parameters
-    setParameters(params, chi, f, phidb, alpha, N, flag, justFE, dostring, ens, m, D, fix, procid); //set parameter values
+    if(fexist(finc)){
+        if(procid==0) printf("Reading input from %s\n\n",finc.c_str());
+        auto params = readParameters(finc); //read in parameters
+        setParameters(params, chi, f, phidb, alpha, N, readwin, justFE, dostring, ens, m, D, fix, procid); //set parameter values
+    } else {
+        if(procid==0) printf("%s not found. Using default values for inputs.\n",finc.c_str());
+    }
+
+    
+    
 
     double V = D[2]*D[1]*D[0];
     
@@ -916,7 +925,6 @@ int main (int argc, char *argv[])
             printf("Running WITHOUT string (i.e. NOT coupling replicas using the string method)\n");
         if(ens==1){
             printf("Using the canonical ensemble. phidb = %lg is the volue fraction of copolymer.\n",phidb);
-            printf("WARNING: When changing ensembles, I usually modify the code. I'm experimenting with making this changeable through a flag for convenience, but I have not thoroughly tested the canonical ensemble implementation in this version.\n");
         } else if(ens==2){
             printf("Using the grand canonical ensemble. phidb = %lg is the fugacity.\n",phidb);
         }
@@ -951,9 +959,7 @@ int main (int argc, char *argv[])
     M = m[0]*m[1]*m[2];
     Mk = m[0]*m[1]*(m[2]/2+1);
     
-    NA=(int) round (N*f), NB=N-NA;
-    f = double(NA)/N;
-    dsA = f/NA, dsB = (1-f)/NB;
+    f = double(round(N*f))/N; //make sure f represents an integer number of beads
     
     density *D2 = new density(N, D);
     
@@ -978,15 +984,11 @@ int main (int argc, char *argv[])
     new3d(&q2, strn, N + 1, M);
     
     //Fields and concentrations and other arrays of potentially useful stuff
-    malloc2d(&W,strn,15*M);
+    malloc2d(&W,strn,7*M);
     phiA = (double **)malloc(strn * sizeof(double *));
     phiB = (double **)malloc(strn * sizeof(double *));
     phih = (double **)malloc(strn * sizeof(double *));
     phicB = (double **)malloc(strn * sizeof(double *));
-    Wp = (double **)malloc(strn * sizeof(double *));
-    Wm = (double **)malloc(strn * sizeof(double *));
-    phip = (double **)malloc(strn * sizeof(double *));
-    phim = (double **)malloc(strn * sizeof(double *));
     dWda = (double **)malloc(strn * sizeof(double *));
     //new2d(&W, strn, 15 * M);
     
@@ -995,18 +997,14 @@ int main (int argc, char *argv[])
         phiB[ii]=W[ii]+3*M;
         phih[ii]=W[ii]+4*M;
         phicB[ii]=W[ii]+5*M;
-        Wp[ii]= W[ii]+6*M;
-        Wm[ii]= W[ii]+7*M;
-        phip[ii]= W[ii]+8*M;
-        phim[ii]= W[ii]+9*M;
-        dWda[ii]=W[ii]+10*M;
+        dWda[ii]=W[ii]+6*M;
     }
     
     ii=0;
     
     int cpto0=0;
     
-    if (flag==1) {
+    if (readwin==1) {
         for(ii=0;ii<strn;ii++){
             winf = "win" + std::to_string(ii);
             if(fexist(winf) && lines(winf)==m[0]*m[1]*m[2]){
@@ -1082,24 +1080,25 @@ int main (int argc, char *argv[])
     FE= FreeE(W, chi,  f, D2, alf, doiis, ndo, whois, procid, FEs0, FEs1, FEs, phctot, numprocs, 1);
      
     tistr();
-    printf("FE caculated (%d) (Time: %s)\n",procid,tms);
+    printf("Free energy caculated (procid = %d) (Time: %s)\n",procid,tms);
     
     
-    if(FE==FE && procid==0){ //only output field if stuff isn't nan
+    if(FE==FE){ //only output field if stuff isn't nan.
         //output fields
         for(ii=0;ii<strn;ii++){
-            outfl = "win" + std::to_string(ii);
-            out=fopen(outfl.c_str(),"w");
-            for (r=0;r<M;r++) fprintf(out,"%.6lf %.6lf\n",W[ii][r],W[ii][r+M]);
-            fclose(out);
-        }
-        //output vtks - just output rhoA and cB. rhoB is just 1-rhoA so that's not too useful.
-        for(ii=0;ii<strn;ii++){
-            outfl = "rhoA_" + std::to_string(ii) + ".vtk";
-            tovtk(outfl, m, D, phiA[ii]);
-            
-            outfl = "rhocB_" + std::to_string(ii) + ".vtk";
-            tovtk(outfl, m, D, phicB[ii]);
+            if(doiis[ii]==1){
+                outfl = "win" + std::to_string(ii);
+                out=fopen(outfl.c_str(),"w");
+                for (r=0;r<M;r++) fprintf(out,"%.6lf %.6lf\n",W[ii][r],W[ii][r+M]);
+                fclose(out);
+                
+                //output vtks - just output rhoA and cB. rhoB and homopolymer conc. can be calculated easily: 1-rhoA or 1-(rhoA+rhocB) respectively.
+                outfl = "rhoA_" + std::to_string(ii) + ".vtk";
+                tovtk(outfl, m, D, phiA[ii]);
+                
+                outfl = "rhocB_" + std::to_string(ii) + ".vtk";
+                tovtk(outfl, m, D, phicB[ii]);
+            }
         }
     }
     MPI_Barrier(MPI_COMM_WORLD);

@@ -1,11 +1,11 @@
 chi = 	30.00000 	#Flory-Huggins interaction parameter, xN
 f = 	0.80000 	#fractional composition of copolymer (tail length of lipid)
 ens =	2		#statistical ensemble: 1 = canonical, 2=grand canonical
-phidb = 1.16000000E-05 	#fugacity or volume fraction of copolymer (GC or C ensemble) (change ensemble in density.h)
+phidb = 1.16000000E-05 	#fugacity or volume fraction of copolymer (GC or C ensemble respectively)
 N = 	60 		#number of steps along polymer
 m = 	200 150 150 	#system size - number of points
 D = 	16.00000 12.00000 12.00000 #system size in units of R0
 fix = 	0 1 		#fix the first/last point? (0=no, 1=yes)
-flag = 	1 		#read in fields from win files (1=yes)
+readwin=1 		#read in fields from win files (1=yes)
 justFE =1		#Just calculate free energy (i.e. leave W_- as is)
 dostring=1		#use string method
