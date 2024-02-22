@@ -1,6 +1,6 @@
 # SCFT_string
 
-This code is a 3D implementation of the self-consistent field theory (SCFT) for a blend of AB diblock copolymers and B homopolymers (adding A homopolymers is partially included in the code but currently non-functional). It shares a common ancestor with a SCFT/FTS code developed in the Matsen group (see 10.3390/polym13152437). The main modification is the addition of the string method for finding the free energy landscape. The code is written in CUDA and MPI. The string method is implemented in the `solve_field` subroutine in `scft.cu`. The string is implemented as a set of replicas, each with its own field. 
+This code is a 3D implementation of the self-consistent field theory (SCFT) for a blend of AB diblock copolymers and B homopolymers (adding A homopolymers is partially included in the code but currently non-functional). It shares a common ancestor with an [SCFT/FTS code](https://doi.org/10.3390/polym13152437) developed in the Matsen group. The main modification is the addition of the string method for finding the free energy landscape. The code is written in CUDA and MPI. The string method is implemented in the `solve_field` subroutine in `scft.cu`. The string is implemented as a set of replicas, each with its own field. 
 
 If you use this code in your work, please cite the paper (still in review :'( - I'll add link when/if published) and this github repository see [here](https://twitter.com/natfriedman/status/1420122675813441540).
 
