@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: Spencer
+    given-names: Russell K. W.
+title: "SCFT_string"
+version: 1.0
+url: "https://github.com/PolymerTheory/SCFT_string"
+license: "MIT" # This is a common open license that comes with no warranty; adjust as necessary
+keywords:
+  - self-consistent field theory
+  - homopolymers
+  - copolymers
+  - membrane biophysics
+  - polymer simulation
+
