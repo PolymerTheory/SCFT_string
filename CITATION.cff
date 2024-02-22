@@ -6,7 +6,7 @@ authors:
 title: "SCFT_string"
 version: 1.0
 url: "https://github.com/PolymerTheory/SCFT_string"
-license: "MIT" # This is a common open license that comes with no warranty; adjust as necessary
+license: "MIT" 
 keywords:
   - self-consistent field theory
   - homopolymers
