@@ -15,7 +15,7 @@ This project is licensed under the MIT License - see the LICENSE.txt file for de
 Use `comp.sh` (or the line therein) to compile the code.
 
 ## Running
-The code uses CUDA and MPI. It can be run on a single processor but is not setup to run on CPUs. Example of a run line to execute the code on 4 processors:
+The code uses CUDA and MPI. It can be run on a single processor but is not setup to run on CPUs. Example of a run line to execute the code on 4 processors: 
 srun --ntasks=4 --gres=gpu:4 ./scft_gpu input.dat
 
 The argument ("input.dat" above) is optional but specifies the file from which input parameters are taken.
