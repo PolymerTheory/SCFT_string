@@ -56,7 +56,6 @@ __global__ void print_from_gpu(void) {
     printf("Testing GPUs: [%d,%d] (From device)\n", threadIdx.x,blockIdx.x);
 }
 
-
 __global__ void reduction_sum(double *a, double *c, const int _M) {
     __shared__ double cache[threadsPerBlock];
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
@@ -243,7 +242,7 @@ __global__ void cubefit_g(double *x, double *dev_cubes, double *dev_cubesT, cons
 
     //this is probably nnot the best way to do it
     //these temporary arrays are never used outside of this kernel so it's slower and less memory-efficient that necessary
-    //but my attempts to make it more efficient broke it and I gave up. If you fix it please let me know.
+    //but my attempts to make it more efficient broke it and I gave up. If you fix it please let me know how.
     double* h=dev_cubesT + (0*strn + strn*5*tid);
     double* A=dev_cubesT + (1*strn + strn*5*tid);
     double* l=dev_cubesT + (2*strn + strn*5*tid);
