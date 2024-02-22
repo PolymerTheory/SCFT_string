@@ -5,7 +5,7 @@ This code is a 3D implementation of the self-consistent field theory (SCFT) for 
 If you use this code in your work, please cite the paper (still in review :'( - I'll add link when/if published) and this github repository see [here](https://twitter.com/natfriedman/status/1420122675813441540).
 
 ## Examples
-"Membrane fission via transmembrane contact" (I'll add link when/if published): used to model topological changes in a phospholipid bilayer.
+ - all uses still in review :'( - I'll add links when/if published
 
 If you use this code, I would be happy to add your paper to the list.
 
