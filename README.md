@@ -10,7 +10,9 @@ If you use this code in your work, please cite the paper (still in review :'( - 
 If you use this code, I would be happy to add your paper to the list.
 
 ## Compiling
-Use `comp.sh` (or the line therein) to compile the code.
+Compile with the make file i.e. `make`. This will create the executable `scft_gpu`. I set this up for the JULICH cluster and it may need to be modified for your needs. Alternatively, use the line:
+
+nvcc -O3 -lmpi -lcufft -L$EBROOTCUDA/lib64   scft.cu -o scft_gpu
 
 ## Running
 The code uses CUDA and MPI. It can be run on a single processor but is not setup to run on CPUs. Example of a run line to execute the code on 4 processors: 
