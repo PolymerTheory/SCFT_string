@@ -9,6 +9,8 @@ Examlles of this code in action:
 
 If you use this code, I would be happy to add your paper to the list.
 
+This project is licensed under the MIT License - see the LICENSE.txt file for details.
+
 ## Compiling
 Use `comp.sh` (or the line therein) to compile the code.
 
