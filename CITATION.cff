@@ -4,7 +4,7 @@ authors:
   - family-names: Spencer
     given-names: Russell K. W.
 title: "SCFT_string"
-version: 1.0
+version: 1.1
 url: "https://github.com/PolymerTheory/SCFT_string"
 license: "MIT" 
 keywords:
