@@ -766,7 +766,7 @@ int solve_field (double **W, const double chi, const double f, density *D2, doub
                 if(((doiis[ii]==1 && doii==-1) || doii==ii) && err==err){
                     outfl = "rhoA_" + std::to_string(ii) + ".vtk";
                     tovtk(outfl, m, D, phiA[ii]);
-                    
+                    //could print rhocB here too, but not necessary to see how the state is updating
                     outfl = "win" + std::to_string(ii);
                     out=fopen(outfl.c_str(),"w");
                     for (r=0;r<M;r++) fprintf(out,"%.6lf %.6lf\n",W[ii][r],W[ii][r+M]);
@@ -1057,6 +1057,8 @@ int main (int argc, char *argv[])
         if(doiis[ii]==1){
             outfl = "rhoA_" + std::to_string(ii) + ".vtk";
             tovtk(outfl, m, D, phiA[ii]);
+            outfl = "rhocB_" + std::to_string(ii) + ".vtk";
+            tovtk(outfl, m, D, phicB[ii]);
             outfl = "win" + std::to_string(ii);
             out=fopen(outfl.c_str(),"w");
             for (r=0;r<M;r++) fprintf(out,"%.6lf %.6lf\n",W[ii][r],W[ii][r+M]);
@@ -1083,7 +1085,7 @@ int main (int argc, char *argv[])
     printf("Free energy caculated (procid = %d) (Time: %s)\n",procid,tms);
     
     
-    if(FE==FE){ //only output field if stuff isn't nan.
+    if(FE==FE){ //only output field if stuff isn't nan. could use isnan but I didn't, for some reason
         //output fields
         for(ii=0;ii<strn;ii++){
             if(doiis[ii]==1){
