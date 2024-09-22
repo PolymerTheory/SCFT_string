@@ -9,7 +9,6 @@
 #pragma once
 #define HANDLE_ERROR( err ) (HandleError( err, __FILE__, __LINE__ ))
 
-
 //the function of most (if not all) of these kernels can be obrained from their usage (if it's not clear from their name). Thus, see density.h.
 
 int const threadsPerBlock = 1024;// WARNING: threadsPerBlock MUST = 2^n, WHERE n IS AN INTEGER (DUE TO REDUCTION KERNELS)
