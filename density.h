@@ -238,8 +238,15 @@ class density
     // DEVICE MEMORY FOR W-, W+, rA and rB //
     double *dev_W;
     
+    // Chunked spline buffers. The old whole-domain buffers are left below in comments.
+    double *dev_x, *dev_xref;
+    double *dev_chunk_in, *dev_chunk_coeff, *dev_chunk_eval;
+    double *chunk_in_host, *chunk_eval_host;
+    int splineChunkM;
+    /*
     //Cube fit stuff
     double *dev_cubes, *dev_cubesT, *dev_x;
+    */
     
     // DEVICE MEMORY FOR PROPAGATORS //
     double **dev_q1, **dev_q2, *dev_qq;
@@ -268,9 +275,18 @@ public:
         
         // ALLOCATE DEVICE MEMORY FOR W-, W+, rA and rB //
         HANDLE_ERROR(cudaMalloc((void**)&dev_W, 14*M*sizeof(double))); //unnecessarily large for now
+        HANDLE_ERROR(cudaMalloc((void**)&dev_x, strn*sizeof(double)));
+        HANDLE_ERROR(cudaMalloc((void**)&dev_xref, strn*sizeof(double)));
+        dev_chunk_in = NULL;
+        dev_chunk_coeff = NULL;
+        dev_chunk_eval = NULL;
+        chunk_in_host = NULL;
+        chunk_eval_host = NULL;
+        splineChunkM = 0;
+        /*
         HANDLE_ERROR(cudaMalloc((void**)&dev_cubes, 4*strn*M*sizeof(double)));
         HANDLE_ERROR(cudaMalloc((void**)&dev_cubesT, 5*strn*M*sizeof(double)));
-        HANDLE_ERROR(cudaMalloc((void**)&dev_x, strn*sizeof(double)));
+        */
         
         
         // ALLOCATE DEVICE MEMORY FOR PROPAGATORS //
@@ -310,9 +326,17 @@ public:
         HANDLE_ERROR(cudaFree(dev_B));
         HANDLE_ERROR(cudaFree(dev_reduced));
         
+        HANDLE_ERROR(cudaFree(dev_x));
+        HANDLE_ERROR(cudaFree(dev_xref));
+        if(dev_chunk_in!=NULL) HANDLE_ERROR(cudaFree(dev_chunk_in));
+        if(dev_chunk_coeff!=NULL) HANDLE_ERROR(cudaFree(dev_chunk_coeff));
+        if(dev_chunk_eval!=NULL) HANDLE_ERROR(cudaFree(dev_chunk_eval));
+        if(chunk_in_host!=NULL) delete[] chunk_in_host;
+        if(chunk_eval_host!=NULL) delete[] chunk_eval_host;
+        /*
         HANDLE_ERROR(cudaFree(dev_cubes));
         HANDLE_ERROR(cudaFree(dev_cubesT));
-        HANDLE_ERROR(cudaFree(dev_x));
+        */
     }
     
     //------------------------------------------------------------
@@ -435,11 +459,72 @@ public:
     }
     
     //------------------------------------------------------------
+    void setupSplineBuffers (int chunkM)
+    {
+        splineChunkM = chunkM;
+        if(dev_chunk_in!=NULL) HANDLE_ERROR(cudaFree(dev_chunk_in));
+        if(dev_chunk_coeff!=NULL) HANDLE_ERROR(cudaFree(dev_chunk_coeff));
+        if(dev_chunk_eval!=NULL) HANDLE_ERROR(cudaFree(dev_chunk_eval));
+        if(chunk_in_host!=NULL) delete[] chunk_in_host;
+        if(chunk_eval_host!=NULL) delete[] chunk_eval_host;
+
+        HANDLE_ERROR(cudaMalloc((void**)&dev_chunk_in, strn * splineChunkM * sizeof(double)));
+        HANDLE_ERROR(cudaMalloc((void**)&dev_chunk_coeff, 4 * strn * splineChunkM * sizeof(double)));
+        HANDLE_ERROR(cudaMalloc((void**)&dev_chunk_eval, strn * splineChunkM * sizeof(double)));
+        chunk_in_host = new double[strn * splineChunkM];
+        chunk_eval_host = new double[strn * splineChunkM];
+    }
     
+    //------------------------------------------------------------
+    void splineDerivsChunked (double **ww, double *x, int r0, int chunkSize, int *doiis, double **out)
+    {
+        const int splineThreads = 128;
+        for(int rc=0; rc<chunkSize; rc++)
+            for(int ii=0; ii<strn; ii++)
+                chunk_in_host[rc*strn + ii] = ww[ii][r0 + rc];
+
+        HANDLE_ERROR(cudaMemcpy(dev_chunk_in, chunk_in_host, strn * chunkSize * sizeof(double), cudaMemcpyHostToDevice));
+        HANDLE_ERROR(cudaMemcpy(dev_x, x, strn * sizeof(double), cudaMemcpyHostToDevice));
+        cubefit_chunk_g<<<(chunkSize+splineThreads-1)/splineThreads, splineThreads>>>(dev_x, dev_chunk_in, dev_chunk_coeff, chunkSize);
+        eval_spline_deriv_chunk_g<<<(chunkSize+splineThreads-1)/splineThreads, splineThreads>>>(dev_x, dev_chunk_coeff, dev_chunk_eval, chunkSize);
+        HANDLE_ERROR(cudaDeviceSynchronize());
+        HANDLE_ERROR(cudaMemcpy(chunk_eval_host, dev_chunk_eval, strn * chunkSize * sizeof(double), cudaMemcpyDeviceToHost));
+
+        for(int rc=0; rc<chunkSize; rc++)
+            for(int ii=0; ii<strn; ii++)
+                if(doiis[ii]==1)
+                    out[ii][r0 + rc] = chunk_eval_host[rc*strn + ii];
+    }
+    
+    //------------------------------------------------------------
+    void splineRedistChunked (double **ww, double *x, double *xref, int r0, int chunkSize, int *doiis, const double lambda)
+    {
+        const int splineThreads = 128;
+        for(int rc=0; rc<chunkSize; rc++)
+            for(int ii=0; ii<strn; ii++)
+                chunk_in_host[rc*strn + ii] = ww[ii][r0 + rc];
+
+        HANDLE_ERROR(cudaMemcpy(dev_chunk_in, chunk_in_host, strn * chunkSize * sizeof(double), cudaMemcpyHostToDevice));
+        HANDLE_ERROR(cudaMemcpy(dev_x, x, strn * sizeof(double), cudaMemcpyHostToDevice));
+        HANDLE_ERROR(cudaMemcpy(dev_xref, xref, strn * sizeof(double), cudaMemcpyHostToDevice));
+        cubefit_chunk_g<<<(chunkSize+splineThreads-1)/splineThreads, splineThreads>>>(dev_x, dev_chunk_in, dev_chunk_coeff, chunkSize);
+        eval_spline_value_chunk_g<<<(chunkSize+splineThreads-1)/splineThreads, splineThreads>>>(dev_x, dev_xref, dev_chunk_coeff, dev_chunk_eval, chunkSize);
+        HANDLE_ERROR(cudaDeviceSynchronize());
+        HANDLE_ERROR(cudaMemcpy(chunk_eval_host, dev_chunk_eval, strn * chunkSize * sizeof(double), cudaMemcpyDeviceToHost));
+
+        for(int rc=0; rc<chunkSize; rc++)
+            for(int ii=1; ii<strn-1; ii++)
+                if(doiis[ii]==1)
+                    ww[ii][r0 + rc] += (chunk_eval_host[rc*strn + ii] - ww[ii][r0 + rc]) * lambda;
+    }
+    
+    //------------------------------------------------------------
+    
+    /*
     void cubefit2 (double *x, double **ww)
     {
         for(int i=0;i<strn;i++){
-            HANDLE_ERROR(cudaMemcpy(dev_W, ww[i], 2*M * sizeof(double), cudaMemcpyHostToDevice));
+            HANDLE_ERROR(cudaMemcpy(dev_W, ww[i], M * sizeof(double), cudaMemcpyHostToDevice));
             //transpose data to make it easier to handle/fit
             transpose_cube<<<(M+threadsPerBlock-1)/threadsPerBlock, threadsPerBlock>>>(dev_W, dev_cubes, i, M,strn);
         }
@@ -449,5 +534,6 @@ public:
         cudaDeviceSynchronize();
         HANDLE_ERROR(cudaMemcpy(cubes, dev_cubes, 4*strn*M * sizeof(double), cudaMemcpyDeviceToHost));
     }
+    */
     
 }; // end of density class

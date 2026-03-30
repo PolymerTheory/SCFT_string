@@ -40,7 +40,11 @@ double ***DEV, ***DDEV, ***WIN;
 double *expKA, *expKB, *expKA2, *expKB2;
 int fix[2];
 
-double ***q1, ***q2, **W, *cubes; //propagators, fields and stuff for cubic spline
+double ***q1, ***q2, **W; //propagators and fields
+int splineChunkM = 200000;
+/*
+double *cubes; //old whole-domain cubic spline coefficients
+*/
 double **phiA, **phiB, **phih, **phicB; //condentrations
 int springsteps=0;
 FILE *in, *out;
@@ -49,6 +53,8 @@ char tms[50];
 time_t time0, time1;
 int sigg=0; //signal to kill code gently
 
+// old whole-domain cubic spline storage kept here as reference only.
+/*
 //arrays used for cubic interpolation in string method
 #define DEV_CUBES(r,j,ii) dev_cubes[ii + j*_strn + _strn*4*r]
 #define CUBES(r,j,ii) cubes[ii + j*strn + strn*4*r]
@@ -61,6 +67,7 @@ double* cube_c;
 double* cube_b;
 double* cube_d;
 double* cube_a;
+*/
 
 //subroutines for the propagators etc. uses cuda. includes other .h files for cuda stuff
 #include "density.h"
@@ -302,7 +309,7 @@ void sig_handler(int signo)
 void avzero(double * A, int n, double zr0=0.0)
 {
     double av=0;
-    for( int i=0;i<n;i++) av += A[n];
+    for( int i=0;i<n;i++) av += A[i];
     av /= n;
     for( int i=0;i<n;i++) A[i]-=av;
     //optional zet 0 to something else
@@ -353,6 +360,7 @@ double EDist (double **W, int ii1, int ii2){
 // from https://gist.github.com/svdamani/1015c5c4b673c3297309
 //--------------------------------------------------------------
 /**/
+#if 0
 double cfit (double *x, double xx, double *yyp, int r){
     /** Step -1 - find where point is */
     int nm=0;
@@ -386,6 +394,7 @@ double fit (double *x, double xx, double *yyp, density *D2, int r){
     }
     return cfit(x,xx,yyp,r); //uses setup to fit
 }
+#endif
 
 //==============================================================
 // step function
@@ -630,17 +639,16 @@ int solve_field (double **W, const double chi, const double f, density *D2, doub
         }
         
         if(doperp==1){
-            fit(x, x[0], yyp,D2,-1);
-            for(r=0; r<M; r++) {
-                for(ii=0;ii<strn;ii++){
-                    fit(x, x[ii], yyp,D2,r);
-                    dWda[ii][r]=yyp[1];
-                }
+            for(ii=0;ii<strn;ii++) if(doiis[ii]==1) for(r=0; r<M; r++) dWda[ii][r]=0;
+            for(int r0=0; r0<M; r0+=splineChunkM){
+                int chunkSize = min(splineChunkM, M-r0);
+                D2->splineDerivsChunked(W, x, r0, chunkSize, doiis, dWda);
             }
             //find normalizations of derivatives = normDER[ii]
             for(ii=0;ii<strn;ii++){
                 normDER[ii]=0;
-                for(r=0; r<M; r++) normDER[ii]+=dWda[ii][r]*dWda[ii][r];
+                if(doiis[ii]==1)
+                    for(r=0; r<M; r++) normDER[ii]+=dWda[ii][r]*dWda[ii][r];
                 normDER[ii]=sqrt(normDER[ii]);
             }
             //find norm of DEV[ii][0][r]  = normDEV[ii]
@@ -734,11 +742,15 @@ int solve_field (double **W, const double chi, const double f, density *D2, doub
         }
         
         if(doredist==1){
-            fit(x, x[0], yyp,D2,-1); //setup coefficients for spline
-            for (r=0; r<M; r++){ //points in space (each point is fit to a curve along the ii direction)
-                for(ii=1;ii<strn-1;ii++) //ii is the aaxis along which teh fit is done
-                    W[ii][r] += (fit(x, xref[ii], yyp,D2,r) - W[ii][r])*lambda; //'fit' gets the value at xref[ii] but the code slowly increments (lambda part) otherwise it can become unstable in some circumstances
-            } //r
+            for (int r0=0; r0<M; r0+=splineChunkM){
+                int chunkSize = min(splineChunkM, M-r0);
+                D2->splineRedistChunked(W, x, xref, r0, chunkSize, doiis, lambda);
+            }
+            if(numprocs>1){
+                for(ii=0;ii<strn;ii++)
+                    MPI_Bcast(W[ii], M, MPI_DOUBLE, whois[ii], MPI_COMM_WORLD);
+                MPI_Barrier(MPI_COMM_WORLD);
+            }
         }
         //updated
         
@@ -943,6 +955,7 @@ int main (int argc, char *argv[])
     if(numprocs>=strn) { //if enough procs to do a run on each cpu, do that
         if(procid<strn) doiis[procid]=1; //doiis is list of string positions that this processor will do. exclude procids greater than string length.. in case there are any
         for(ii=0;ii<numprocs;ii++) {if(ii<strn) ndo[ii]=1; else ndo[ii]=0;} //array of how many string elements each will do
+        for(ii=0;ii<strn;ii++) whois[ii]=ii;
     } else {
         int ndo0 = strn/numprocs; //baseline number of string elements
         for(ii=0;ii<numprocs;ii++) ndo[ii]=ndo0; //set that in array of numbers to do
@@ -962,7 +975,10 @@ int main (int argc, char *argv[])
     f = double(round(N*f))/N; //make sure f represents an integer number of beads
     
     density *D2 = new density(N, D);
+    D2->setupSplineBuffers(splineChunkM);
     
+    // old whole-domain cubic spline allocation kept for reference.
+    /*
     //cubic spline stuff
     cube_h = new double[strn];
     cube_A = new double[strn];
@@ -975,6 +991,7 @@ int main (int argc, char *argv[])
     cube_a = new double[strn];
     
     cubes = new double[M * strn * 4];
+    */
     
     new3d(&DEV, strn, DIM, 2 * M);
     new3d(&DDEV, strn, DIM, 2 * M);
@@ -1109,6 +1126,8 @@ int main (int argc, char *argv[])
     
     //Deallocating arrays
     
+    // Old whole-domain spline deallocation kept for reference.
+    /*
     //Deallocating 1D arrays:
     delete[] cubes;
     delete[] cube_h;
@@ -1120,6 +1139,7 @@ int main (int argc, char *argv[])
     delete[] cube_b;
     delete[] cube_d;
     delete[] cube_a;
+    */
     
     delete3d(&q1, strn, N + 1);
     delete3d(&q2, strn, N + 1);
@@ -1136,4 +1156,3 @@ int main (int argc, char *argv[])
     tistr();
     printf("Done (%d) (Time: %s)\n",procid,tms);
 }
-

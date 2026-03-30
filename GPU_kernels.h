@@ -224,7 +224,111 @@ __global__ void Prepare_dev_dev_expWds2_dev_expWds(double *dev_expWds2_p1, doubl
     dev_expWds_m1[tid]  = dev_expWds2_m1[tid] * dev_expWds2_m1[tid];
 }
 
+// Chunked spline path:
+// - dev_chunk_in stores a[ii] for one spatial chunk with layout rc*strn + ii
+// - dev_chunk_coeff stores c,b,d,a for that same chunk
+// - temporary spline arrays stay local to each thread instead of being stored
+//   in a full-domain global scratch array.
+__global__ void cubefit_chunk_g(const double *x, const double *dev_chunk_in, double *dev_chunk_coeff, const int chunkSize)
+{
+    int const tid = threadIdx.x + blockIdx.x * blockDim.x;
+    if (tid >= chunkSize) return;
 
+    const int n = strn - 1;
+    double a[strn], b[strn], c[strn], d[strn];
+    double h[strn], A[strn], l[strn], u[strn], z[strn];
+
+    for (int ii = 0; ii < strn; ++ii) {
+        a[ii] = dev_chunk_in[tid * strn + ii];
+        b[ii] = 0.0;
+        c[ii] = 0.0;
+        d[ii] = 0.0;
+        h[ii] = 0.0;
+        A[ii] = 0.0;
+        l[ii] = 0.0;
+        u[ii] = 0.0;
+        z[ii] = 0.0;
+    }
+
+    for (int i = 0; i <= n - 1; ++i) h[i] = x[i + 1] - x[i];
+    for (int i = 1; i <= n - 1; ++i)
+        A[i] = 3.0 * (a[i + 1] - a[i]) / h[i] - 3.0 * (a[i] - a[i - 1]) / h[i - 1];
+
+    l[0] = 1.0;
+    u[0] = 0.0;
+    z[0] = 0.0;
+
+    for (int i = 1; i <= n - 1; ++i) {
+        l[i] = 2.0 * (x[i + 1] - x[i - 1]) - h[i - 1] * u[i - 1];
+        u[i] = h[i] / l[i];
+        z[i] = (A[i] - h[i - 1] * z[i - 1]) / l[i];
+    }
+
+    l[n] = 1.0;
+    z[n] = 0.0;
+    c[n] = 0.0;
+
+    for (int j = n - 1; j >= 0; --j) {
+        c[j] = z[j] - u[j] * c[j + 1];
+        b[j] = (a[j + 1] - a[j]) / h[j] - h[j] * (c[j + 1] + 2.0 * c[j]) / 3.0;
+        d[j] = (c[j + 1] - c[j]) / (3.0 * h[j]);
+    }
+
+    for (int ii = 0; ii < strn; ++ii) {
+        const int base = ii + strn * 4 * tid;
+        dev_chunk_coeff[base + 0 * strn] = c[ii];
+        dev_chunk_coeff[base + 1 * strn] = b[ii];
+        dev_chunk_coeff[base + 2 * strn] = d[ii];
+        dev_chunk_coeff[base + 3 * strn] = a[ii];
+    }
+}
+
+__global__ void eval_spline_deriv_chunk_g(const double *x, const double *dev_chunk_coeff, double *dev_chunk_eval, const int chunkSize)
+{
+    int const tid = threadIdx.x + blockIdx.x * blockDim.x;
+    if (tid >= chunkSize) return;
+
+    for (int evali = 0; evali < strn; ++evali) {
+        const double xx = x[evali];
+        int nm = 0;
+        for (int i = 0; i < strn; ++i) {
+            if (x[i] < xx) nm = i;
+            else break;
+        }
+
+        const int base = nm + strn * 4 * tid;
+        const double c = dev_chunk_coeff[base + 0 * strn];
+        const double b = dev_chunk_coeff[base + 1 * strn];
+        const double d = dev_chunk_coeff[base + 2 * strn];
+        const double dx = xx - x[nm];
+        dev_chunk_eval[tid * strn + evali] = b + 2.0 * dx * c + 3.0 * dx * dx * d;
+    }
+}
+
+__global__ void eval_spline_value_chunk_g(const double *x, const double *dev_xref, const double *dev_chunk_coeff, double *dev_chunk_eval, const int chunkSize)
+{
+    int const tid = threadIdx.x + blockIdx.x * blockDim.x;
+    if (tid >= chunkSize) return;
+
+    for (int evali = 0; evali < strn; ++evali) {
+        const double xx = dev_xref[evali];
+        int nm = 0;
+        for (int i = 0; i < strn; ++i) {
+            if (x[i] < xx) nm = i;
+            else break;
+        }
+
+        const int base = nm + strn * 4 * tid;
+        const double c = dev_chunk_coeff[base + 0 * strn];
+        const double b = dev_chunk_coeff[base + 1 * strn];
+        const double d = dev_chunk_coeff[base + 2 * strn];
+        const double a = dev_chunk_coeff[base + 3 * strn];
+        const double dx = xx - x[nm];
+        dev_chunk_eval[tid * strn + evali] = a + dx * b + dx * dx * c + dx * dx * dx * d;
+    }
+}
+
+#if 0
 //calculate coefficiennts for cubic spline
 __global__ void cubefit_g(double *x, double *dev_cubes, double *dev_cubesT, const int _M)
 {
@@ -284,5 +388,4 @@ __global__ void transpose_cube(double *dev_W, double *dev_cubes, int i, const in
     if (tid >= _M) return;
     DEV_CUBES(tid,3,i)=dev_W[tid];
 }
-
-
+#endif
