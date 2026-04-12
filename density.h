@@ -476,6 +476,18 @@ public:
     }
     
     //------------------------------------------------------------
+    void setSplineX (double *x)
+    {
+        HANDLE_ERROR(cudaMemcpy(dev_x, x, strn * sizeof(double), cudaMemcpyHostToDevice));
+    }
+    
+    //------------------------------------------------------------
+    void setSplineXRef (double *xref)
+    {
+        HANDLE_ERROR(cudaMemcpy(dev_xref, xref, strn * sizeof(double), cudaMemcpyHostToDevice));
+    }
+    
+    //------------------------------------------------------------
     void splineDerivsChunked (double **ww, double *x, int r0, int chunkSize, int *doiis, double **out)
     {
         const int splineThreads = 128;
@@ -484,7 +496,6 @@ public:
                 chunk_in_host[rc*strn + ii] = ww[ii][r0 + rc];
 
         HANDLE_ERROR(cudaMemcpy(dev_chunk_in, chunk_in_host, strn * chunkSize * sizeof(double), cudaMemcpyHostToDevice));
-        HANDLE_ERROR(cudaMemcpy(dev_x, x, strn * sizeof(double), cudaMemcpyHostToDevice));
         cubefit_chunk_g<<<(chunkSize+splineThreads-1)/splineThreads, splineThreads>>>(dev_x, dev_chunk_in, dev_chunk_coeff, chunkSize);
         eval_spline_deriv_chunk_g<<<(chunkSize+splineThreads-1)/splineThreads, splineThreads>>>(dev_x, dev_chunk_coeff, dev_chunk_eval, chunkSize);
         HANDLE_ERROR(cudaDeviceSynchronize());
@@ -505,8 +516,6 @@ public:
                 chunk_in_host[rc*strn + ii] = ww[ii][r0 + rc];
 
         HANDLE_ERROR(cudaMemcpy(dev_chunk_in, chunk_in_host, strn * chunkSize * sizeof(double), cudaMemcpyHostToDevice));
-        HANDLE_ERROR(cudaMemcpy(dev_x, x, strn * sizeof(double), cudaMemcpyHostToDevice));
-        HANDLE_ERROR(cudaMemcpy(dev_xref, xref, strn * sizeof(double), cudaMemcpyHostToDevice));
         cubefit_chunk_g<<<(chunkSize+splineThreads-1)/splineThreads, splineThreads>>>(dev_x, dev_chunk_in, dev_chunk_coeff, chunkSize);
         eval_spline_value_chunk_g<<<(chunkSize+splineThreads-1)/splineThreads, splineThreads>>>(dev_x, dev_xref, dev_chunk_coeff, dev_chunk_eval, chunkSize);
         HANDLE_ERROR(cudaDeviceSynchronize());

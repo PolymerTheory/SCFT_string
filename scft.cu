@@ -640,6 +640,7 @@ int solve_field (double **W, const double chi, const double f, density *D2, doub
         
         if(doperp==1){
             for(ii=0;ii<strn;ii++) if(doiis[ii]==1) for(r=0; r<M; r++) dWda[ii][r]=0;
+            D2->setSplineX(x);
             for(int r0=0; r0<M; r0+=splineChunkM){
                 int chunkSize = min(splineChunkM, M-r0);
                 D2->splineDerivsChunked(W, x, r0, chunkSize, doiis, dWda);
@@ -742,6 +743,8 @@ int solve_field (double **W, const double chi, const double f, density *D2, doub
         }
         
         if(doredist==1){
+            D2->setSplineX(x);
+            D2->setSplineXRef(xref);
             for (int r0=0; r0<M; r0+=splineChunkM){
                 int chunkSize = min(splineChunkM, M-r0);
                 D2->splineRedistChunked(W, x, xref, r0, chunkSize, doiis, lambda);
@@ -943,30 +946,60 @@ int main (int argc, char *argv[])
         printf("\n");
     }
     
+    
 
     
-    
     //Decide which processors do what
-    int *doiis, *ndo, *whois, before=0, bf2=0;
+    int *doiis, *ndo, *whois;
     doiis = new int[strn];
     whois = new int[strn];
     ndo = new int[numprocs];
     for(ii=0;ii<strn;ii++) doiis[ii]=0;
-    if(numprocs>=strn) { //if enough procs to do a run on each cpu, do that
-        if(procid<strn) doiis[procid]=1; //doiis is list of string positions that this processor will do. exclude procids greater than string length.. in case there are any
-        for(ii=0;ii<numprocs;ii++) {if(ii<strn) ndo[ii]=1; else ndo[ii]=0;} //array of how many string elements each will do
-        for(ii=0;ii<strn;ii++) whois[ii]=ii;
-    } else {
-        int ndo0 = strn/numprocs; //baseline number of string elements
-        for(ii=0;ii<numprocs;ii++) ndo[ii]=ndo0; //set that in array of numbers to do
-        for(ii=0;ii<(strn-numprocs*ndo0);ii++) ndo[ii]++; // fill in any let over
-        for(ii=0;ii<procid;ii++) before += ndo[ii]; //count numbers done b previous processors
-        for(ii=0;ii<ndo[procid];ii++) doiis[before+ii]=1; //do these iis
-        for(ii=0;ii<numprocs;ii++) {
-            for(int iii=0;iii<ndo[ii];iii++)
-            {whois[bf2]=ii; bf2++;}
-            
+    for(ii=0;ii<strn;ii++) whois[ii]=-1;
+
+    int ndo0 = strn/numprocs;
+    int rem = strn%numprocs;
+    for(ii=0;ii<numprocs;ii++){
+        ndo[ii] = ndo0;
+        if(ii<rem) ndo[ii]++;
+    }
+
+    int start = 0;
+    for(int p=0; p<numprocs; p++){
+        for(int j=0; j<ndo[p]; j++){
+            int iii = start + j;
+            whois[iii] = p;
+            if(p==procid) doiis[iii] = 1;
         }
+        start += ndo[p];
+    }
+
+    if(procid==0){
+        int ndo_min=ndo[0], ndo_max=ndo[0], ndosum=0;
+        for(ii=0;ii<numprocs;ii++){
+            ndosum += ndo[ii];
+            ndo_min = min(ndo_min, ndo[ii]);
+            ndo_max = max(ndo_max, ndo[ii]);
+        }
+        for(ii=0;ii<strn;ii++){
+            if(whois[ii]<0 || whois[ii]>=numprocs){
+                printf("Fatal error: invalid owner for ii=%d: %d\n",ii,whois[ii]);
+                MPI_Abort(MPI_COMM_WORLD, 1);
+            }
+        }
+        if(ndosum!=strn){
+            printf("Fatal error: replica ownership sum mismatch: ndosum=%d strn=%d\n",ndosum,strn);
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+        if(ndo_max-ndo_min>1){
+            printf("Fatal error: uneven replica distribution: min=%d max=%d\n",ndo_min,ndo_max);
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+        printf("Replica ownership:\n");
+        for(ii = 0; ii < strn; ii++) {
+            printf("%d ", whois[ii]);
+        }
+        printf("\n");
     }
     
     M = m[0]*m[1]*m[2];
